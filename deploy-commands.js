@@ -158,7 +158,11 @@ const commands = [
       option.setName('username')
         .setDescription('The X username (handle) to check')
         .setRequired(true)
-    )
+    ),
+
+  new SlashCommandBuilder()
+    .setName('help')
+    .setDescription('Show the comprehensive help guide for the Chess Hunter bot')
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(token);

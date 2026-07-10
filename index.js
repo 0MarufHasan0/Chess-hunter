@@ -1136,6 +1136,52 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
+    // 13. /help command
+    if (commandName === 'help') {
+      const helpEmbed = {
+        color: 0x9B59B6,
+        title: '🎯 Chess Hunter Bot - সাহায্য নির্দেশিকা (Help Guide)',
+        description: 'টুইটার (X) থেকে হাই-কোয়ালিটি অ্যালার্ট এবং ট্র্যাকিং মনিটর করার জন্য বটের সমস্ত কমান্ডের বিস্তারিত বিবরণ নিচে দেওয়া হলো:',
+        fields: [
+          {
+            name: '📢 ১. প্রোফাইল ট্র্যাকার (New Profiles Finder)',
+            value: 'গ্লোবাল সার্চ করে নির্দিষ্ট কী-ওয়ার্ডের নতুন খোলা আইডিগুলো ট্র্যাক করার জন্য:\n' +
+                   '• `/setchannel <channel>` - ট্র্যাকার অ্যালার্ট পোস্ট করার চ্যানেল সেট করুন।\n' +
+                   '• `/setkeyword <word>` - ট্র্যাকিংয়ের জন্য নতুন কী-ওয়ার্ড যুক্ত করুন।\n' +
+                   '• `/removekeyword <word>` - তালিকা থেকে কোনো কী-ওয়ার্ড বাদ দিন।\n' +
+                   '• `/listkeywords` - সার্ভারের বর্তমান ট্র্যাকিং কী-ওয়ার্ডের তালিকা দেখুন।\n' +
+                   '• `/setmode <new-only|all-matches>` - অ্যালার্ট ফিল্টার মোড সেট করুন (৯৬ ঘণ্টার নিচের নতুন অ্যাকাউন্ট নাকি সব অ্যাকাউন্ট)।'
+          },
+          {
+            name: '🚨 ২. টাইমলাইন মনিটর (Home Timeline Tracker)',
+            value: 'আপনি যাদের ফলো করেছেন, তাদের হোম টাইমলাইন স্ক্র্যাপ করে ফিল্টার করা অ্যালার্টের জন্য:\n' +
+                   '• `/setmonitorchannel <channel>` - মনিটরিং অ্যালার্টের টার্গেট চ্যানেল সেট করুন।\n' +
+                   '• `/setmonitorkeywords <words>` - কমা দিয়ে একাধিক আলফা ইন্ডিকেটর কি-ওয়ার্ড লিখুন (যেমন: `early find, alpha`)।\n' +
+                   '• `/listmonitor` - হোম টাইমলাইন মনিটরের বর্তমান কনফিগারেশন ও কি-ওয়ার্ড দেখুন।\n\n' +
+                   '*নোট:* এখানে রিটুইট সম্পূর্ণ ব্লক থাকে। টুইটটি অবশ্যই একই সাথে **আলফা ইন্ডিকেটর + সাপ্লাই ডিটেইলস + চেইন নাম/ট্যাগ** বহন করতে হবে।'
+          },
+          {
+            name: '🛠️ ৩. ডায়নামিক কাস্টম রুলস (Dynamic Custom Rules)',
+            value: 'নির্দিষ্ট চ্যানেল ও আইডির জন্য কাস্টম ট্র্যাকিং রুলস তৈরি করার জন্য:\n' +
+                   '• `/addrule <channel> <name> [author_keywords] [include_keywords] [required_keywords] [is_giveaway]` - নতুন ট্র্যাকিং রুলস তৈরি করুন।\n' +
+                   '• `/removerule <name>` - পূর্বে তৈরি করা রুলস মুছে ফেলুন।\n' +
+                   '• `/listrules` - সার্ভারে সচল সমস্ত ডায়নামিক কাস্টম রুলসের তালিকা দেখুন।\n\n' +
+                   '*গিভঅ্যাওয়ে অপশন:* `is_giveaway` অপশনটি **True** করে দিলে বট স্বয়ংক্রিয়ভাবে FCFS, GTD, drop EVM, follow ইত্যাদি বাউন্ডারি-সেফ রেগুলার এক্সপ্রেশন ব্যবহার করে গিভঅ্যাওয়ে ডিটেক্ট করবে।'
+          },
+          {
+            name: '👤 ৪. টুইটার অ্যাকাউন্ট ও বয়স চেক (X Profile Checker)',
+            value: '• `/checkprofile <username>` - যেকোনো টুইটার অ্যাকাউন্টের সম্পূর্ণ ডিটেইলস, ইউজার আইডি এবং অ্যাকাউন্টটি কত দিন পুরোনো (Account Age in Days) তা সরাসরি জানতে পারবেন।'
+          }
+        ],
+        footer: {
+          text: 'Chess Hunter Bot • Developed for Premium Alpha Tracking'
+        },
+        timestamp: new Date().toISOString()
+      };
+
+      return interaction.reply({ embeds: [helpEmbed], ephemeral: true });
+    }
+
   } catch (error) {
     console.error('Error handling slash command interaction:', error);
     try {
