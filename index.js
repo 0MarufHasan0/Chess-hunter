@@ -502,18 +502,28 @@ async function pollTimeline() {
               } else if (rule.includeKeywords && rule.includeKeywords.length > 0) {
                 includeMatched = rule.includeKeywords.some(ik => {
                   const escaped = ik.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-                  const regex = new RegExp(`\\b${escaped}\\b`, 'i');
-                  return regex.test(cleanedText);
+                  const isAlphaNumeric = /^[a-zA-Z0-9]+$/.test(ik);
+                  if (isAlphaNumeric) {
+                    const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+                    return regex.test(cleanedText);
+                  } else {
+                    return cleanedText.toLowerCase().includes(ik.toLowerCase());
+                  }
                 });
               }
 
-              // Check if required keywords match (if requiredKeywords is not empty)
+              // Check if required keywords match (AND condition: ALL requiredKeywords must match)
               let requiredMatched = true;
               if (rule.requiredKeywords && rule.requiredKeywords.length > 0) {
-                requiredMatched = rule.requiredKeywords.some(rk => {
+                requiredMatched = rule.requiredKeywords.every(rk => {
                   const escaped = rk.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-                  const regex = new RegExp(`\\b${escaped}\\b`, 'i');
-                  return regex.test(cleanedText);
+                  const isAlphaNumeric = /^[a-zA-Z0-9]+$/.test(rk);
+                  if (isAlphaNumeric) {
+                    const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+                    return regex.test(cleanedText);
+                  } else {
+                    return cleanedText.toLowerCase().includes(rk.toLowerCase());
+                  }
                 });
               }
 
