@@ -537,7 +537,25 @@ async function pollTimeline() {
 
               // Check if includes match (if includeKeywords is not empty)
               let includeMatched = true;
-              if (rule.includeKeywords && rule.includeKeywords.length > 0) {
+              if (rule.isGiveaway) {
+                // Custom Giveaway keyword check (gtd, fcfs, follow, drop address, etc.)
+                const hasGiveawayTerm = 
+                  textLower.includes('giveaway') ||
+                  textLower.includes('give-away') ||
+                  textLower.includes('give away') ||
+                  textLower.includes('fcfs') ||
+                  textLower.includes('follow') ||
+                  textLower.includes('drop address') ||
+                  textLower.includes('drop your address') ||
+                  textLower.includes('drop wallet') ||
+                  textLower.includes('drop eth') ||
+                  textLower.includes('drop sol') ||
+                  textLower.includes('rt') ||
+                  textLower.includes('retweet') ||
+                  /gtd/i.test(textLower); // Match gtd anywhere (10gtd, 10xgtd, etc.)
+
+                includeMatched = hasGiveawayTerm;
+              } else if (rule.includeKeywords && rule.includeKeywords.length > 0) {
                 includeMatched = rule.includeKeywords.some(ik => {
                   const escaped = ik.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
                   const regex = new RegExp(`\\b${escaped}\\b`, 'i');
@@ -556,6 +574,20 @@ async function pollTimeline() {
               }
 
               if (authorMatched && includeMatched && requiredMatched) {
+                // If it is a giveaway rule, enforce NFT-only verification
+                if (rule.isGiveaway) {
+                  const nftKeywords = ['nft', 'pfp', 'mint', 'whitelist', 'wl', 'opensea', 'magiceden', 'supply', 'collection'];
+                  const isNftOnly = nftKeywords.some(kw => {
+                    const escaped = kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                    const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+                    return regex.test(cleanedText);
+                  });
+                  
+                  if (!isNftOnly) {
+                    continue; // Skip non-NFT giveaways
+                  }
+                }
+
                 // Crypto Validation Check: Ensure it is crypto-related if it's not a known author match
                 const cryptoValidated = cryptoIndicators.some(ci => {
                   const escaped = ci.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
@@ -1131,20 +1163,19 @@ client.once('ready', async () => {
     await getTwitterScraper();
     console.log('Twitter client initial validation check passed.');
 
-    // Initialize default rules for the user's guild if they don't exist
+    // Initialize or update default rules for the user's guild
     try {
       const channel1 = await client.channels.fetch('1525047487318982696');
       if (channel1 && channel1.guild) {
         const guildId = channel1.guild.id;
         const configDoc = await GuildConfig.findOne({ guildId });
-        if (configDoc && (!configDoc.monitorRules || configDoc.monitorRules.length === 0)) {
-          console.log('Initializing default monitor rules for guild:', guildId);
-          configDoc.monitorRules = [
+        if (configDoc) {
+          const defaultRules = [
             {
               channelId: '1525047487318982696',
               name: 'robinhood-early',
               authorKeywords: ['robinhood', 'robin', 'robi'],
-              includeKeywords: ['early find', 'early alpha', 'found early', 'early', 'alpha'],
+              includeKeywords: ['early find', 'alpha', 'early alpha', 'interesting find', 'new alpha', 'free mint find', 'early nft find', 'found early'],
               requiredKeywords: [],
               isGiveaway: false
             },
@@ -1152,21 +1183,41 @@ client.once('ready', async () => {
               channelId: '1525047622438621286',
               name: 'robinhood-giveaway',
               authorKeywords: ['robinhood', 'robin', 'robi'],
-              includeKeywords: ['giveaway', 'give away', 'wl', 'whitelist', 'mint', 'airdrop', 'raffle', 'free mint'],
-              requiredKeywords: ['nft', 'pfp', 'mint', 'whitelist', 'wl', 'solana', 'eth', 'opensea', 'magiceden', 'crypto', 'ordinals', 'supply', 'collection'],
+              includeKeywords: ['giveaway', 'give away', 'wl', 'whitelist', 'mint', 'airdrop', 'raffle', 'free mint', 'gtd', 'fcfs', 'follow', 'drop address', 'drop wallet', 'drop your address', 'rt', 'retweet'],
+              requiredKeywords: ['nft', 'pfp', 'mint', 'whitelist', 'wl', 'opensea', 'magiceden', 'supply', 'collection'],
               isGiveaway: true
             },
             {
               channelId: '1525047727442890834',
               name: 'sol-nft',
               authorKeywords: [],
-              includeKeywords: ['early find', 'early alpha', 'found early', 'early', 'alpha'],
-              requiredKeywords: ['solana', 'sol', 'nft', 'pfp', 'mint', 'whitelist', 'wl', 'opensea', 'magiceden', 'supply', 'collection'],
+              includeKeywords: ['early find', 'alpha', 'early alpha', 'interesting find', 'new alpha', 'free mint find', 'early nft find', 'found early'],
+              requiredKeywords: ['solana', 'sol'],
               isGiveaway: false
             }
           ];
+
+          if (!configDoc.monitorRules) {
+            configDoc.monitorRules = [];
+          }
+
+          // Update existing default rules or push new ones
+          for (const defRule of defaultRules) {
+            const index = configDoc.monitorRules.findIndex(r => r.name === defRule.name);
+            if (index !== -1) {
+              // Update existing
+              configDoc.monitorRules[index].channelId = defRule.channelId;
+              configDoc.monitorRules[index].authorKeywords = defRule.authorKeywords;
+              configDoc.monitorRules[index].includeKeywords = defRule.includeKeywords;
+              configDoc.monitorRules[index].requiredKeywords = defRule.requiredKeywords;
+              configDoc.monitorRules[index].isGiveaway = defRule.isGiveaway;
+            } else {
+              // Add new
+              configDoc.monitorRules.push(defRule);
+            }
+          }
           await configDoc.save();
-          console.log('Default monitor rules successfully initialized.');
+          console.log('Default monitor rules successfully updated/initialized.');
         }
       }
     } catch (err) {
