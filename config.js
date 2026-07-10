@@ -19,5 +19,5 @@ module.exports = {
     email: process.env.TW_EMAIL
   },
   pollIntervalCron: process.env.POLL_INTERVAL_CRON || '*/7 * * * *',
-  newAccountHours: parseFloat(process.env.NEW_ACCOUNT_HOURS) || 48
+  newAccountHours: parseFloat(process.env.NEW_ACCOUNT_HOURS) || 96
 };

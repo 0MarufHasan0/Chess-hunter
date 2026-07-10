@@ -267,6 +267,14 @@ async function pollTwitter() {
             twitterId: twitterId
           });
 
+          // Automatically follow the user so their tweets appear in the home timeline
+          try {
+            await scraperClient.followUser(username);
+            console.log(`Successfully followed @${username} on Twitter.`);
+          } catch (followErr) {
+            console.warn(`Note: Could not auto-follow @${username} (might already be followed or rate-limited):`, followErr.message);
+          }
+
         } catch (guildErr) {
           console.error(`Error notifying guild ${gc.guildId} channel ${gc.channelId}:`, guildErr.message);
         }
