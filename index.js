@@ -1195,8 +1195,18 @@ client.once('ready', async () => {
 
   // Run a poll cycle immediately on startup
   console.log('Executing immediate startup Twitter poll...');
-  await pollTwitter();
-  await pollTimeline();
+  (async () => {
+    try {
+      await pollTimeline();
+    } catch (err) {
+      console.error('Error during startup pollTimeline:', err.message);
+    }
+    try {
+      await pollTwitter();
+    } catch (err) {
+      console.error('Error during startup pollTwitter:', err.message);
+    }
+  })();
 });
 
 // Graceful Shutdown
