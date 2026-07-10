@@ -426,7 +426,7 @@ async function pollTimeline() {
         continue;
       }
 
-      // Skip tweets older than 10 minutes to prevent historic back-alerting
+      // Skip tweets older than 72 hours to prevent historic back-alerting
       let tweetTimeMs = null;
       if (tweet.timestamp) {
         tweetTimeMs = tweet.timestamp * 1000;
@@ -437,8 +437,8 @@ async function pollTimeline() {
       }
 
       if (tweetTimeMs) {
-        const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
-        if (tweetTimeMs < tenMinutesAgo) {
+        const seventyTwoHoursAgo = Date.now() - 72 * 60 * 60 * 1000;
+        if (tweetTimeMs < seventyTwoHoursAgo) {
           continue;
         }
       }
