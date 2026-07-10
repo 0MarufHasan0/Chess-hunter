@@ -801,12 +801,12 @@ async function pollTimeline() {
               .setTimestamp();
 
             const allButtons = [];
-            const authorUsername = tweet.username || (tweet.core?.user_results?.result?.legacy?.screen_name);
-            if (authorUsername) {
+            const tweetAuthorUsername = tweet.username || (tweet.core?.user_results?.result?.legacy?.screen_name);
+            if (tweetAuthorUsername) {
               allButtons.push(
                 new ButtonBuilder()
                   .setLabel('Source Tweet')
-                  .setURL(`https://x.com/${authorUsername}/status/${tweetId}`)
+                  .setURL(`https://x.com/${tweetAuthorUsername}/status/${tweetId}`)
                   .setStyle(ButtonStyle.Link)
               );
             }
