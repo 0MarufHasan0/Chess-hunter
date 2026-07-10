@@ -1,0 +1,17 @@
+{
+  "name": "discord-twitter-tracker-bot",
+  "version": "1.0.0",
+  "description": "Discord NFT/Twitter Account Tracker Bot using agent-twitter-client",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "deploy-commands": "node deploy-commands.js"
+  },
+  "dependencies": {
+    "agent-twitter-client": "^0.0.18",
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5",
+    "mongoose": "^8.4.3",
+    "node-cron": "^3.0.3"
+  }
+}
