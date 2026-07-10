@@ -34,12 +34,13 @@ NotifiedAccountSchema.index({ guildId: 1, twitterId: 1 }, { unique: true });
 // Schema for deduplicating notified tweets from followed accounts
 const NotifiedTweetSchema = new mongoose.Schema({
   guildId: { type: String, required: true, index: true },
+  channelId: { type: String, index: true }, // Added for channel-specific deduplication
   tweetId: { type: String, required: true, index: true },
   notifiedAt: { type: Date, default: Date.now }
 });
 
 // Compound unique index for tweet alerts deduplication
-NotifiedTweetSchema.index({ guildId: 1, tweetId: 1 }, { unique: true });
+NotifiedTweetSchema.index({ guildId: 1, channelId: 1, tweetId: 1 }, { unique: true });
 
 const GuildConfig = mongoose.model('GuildConfig', GuildConfigSchema);
 const NotifiedAccount = mongoose.model('NotifiedAccount', NotifiedAccountSchema);

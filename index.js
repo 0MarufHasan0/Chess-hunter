@@ -277,8 +277,99 @@ async function pollTwitter() {
   console.log('--- Polling Cycle Completed ---');
 }
 
+async function sendTweetAlert(channelId, tweetId, tweet, cleanedText, mentions, title, color, isGiveaway = false) {
+  try {
+    const channel = await client.channels.fetch(channelId);
+    if (!channel || !channel.isTextBased()) {
+      return;
+    }
+
+    const guildId = channel.guild?.id || 'unknown';
+
+    // Check if already notified
+    const alreadyNotified = await NotifiedTweet.findOne({
+      guildId,
+      channelId,
+      tweetId
+    });
+
+    if (alreadyNotified) {
+      return;
+    }
+
+    // Build premium embed
+    let description = cleanedText;
+    if (isGiveaway) {
+      const endedPatterns = [
+        /\bended\b/i,
+        /\bclosed\b/i,
+        /\bover\b/i,
+        /\bdrawn\b/i,
+        /\bwinner\s+is\b/i,
+        /\bwinners\b/i,
+        /\bcongrats\b/i,
+        /\bcongratulations\b/i
+      ];
+      const isEnded = endedPatterns.some(pattern => pattern.test(cleanedText));
+      const status = isEnded ? '🔴 Ended / Closed' : '🟢 Running / Active';
+      description = `**Status:** ${status}\n\n${cleanedText}`;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(color)
+      .setTitle(title)
+      .setDescription(description)
+      .setTimestamp();
+
+    // Construct buttons
+    const allButtons = [];
+    const authorUsername = tweet.username || (tweet.core?.user_results?.result?.legacy?.screen_name);
+    if (authorUsername) {
+      allButtons.push(
+        new ButtonBuilder()
+          .setLabel('Source Tweet')
+          .setURL(`https://x.com/${authorUsername}/status/${tweetId}`)
+          .setStyle(ButtonStyle.Link)
+      );
+    }
+
+    const uniqueMentions = [...new Set(mentions)].slice(0, 24);
+    for (const mention of uniqueMentions) {
+      allButtons.push(
+        new ButtonBuilder()
+          .setLabel(`@${mention}`)
+          .setURL(`https://x.com/${mention}`)
+          .setStyle(ButtonStyle.Link)
+      );
+    }
+
+    const actionRows = [];
+    for (let i = 0; i < allButtons.length; i += 5) {
+      const chunk = allButtons.slice(i, i + 5);
+      const row = new ActionRowBuilder().addComponents(chunk);
+      actionRows.push(row);
+    }
+
+    const messageOptions = { embeds: [embed] };
+    if (actionRows.length > 0) {
+      messageOptions.components = actionRows;
+    }
+
+    await channel.send(messageOptions);
+    console.log(`Alert sent to channel ${channelId} for tweet ${tweetId}`);
+
+    await NotifiedTweet.create({
+      guildId,
+      channelId,
+      tweetId
+    });
+  } catch (err) {
+    console.error(`Error sending alert to channel ${channelId}:`, err.message);
+  }
+}
+
 /**
- * Polls the home timeline (following list tweets) for configured keywords and alerts designated channels anonymously.
+ * Polls the home timeline (following list tweets) for configured keywords and alerts designated channels.
  */
 async function pollTimeline() {
   console.log('--- Starting Tweet Monitoring Cycle ---');
@@ -289,12 +380,6 @@ async function pollTimeline() {
       monitorChannelId: { $ne: null },
       monitorKeywords: { $exists: true, $not: { $size: 0 } }
     });
-
-    if (guildConfigs.length === 0) {
-      console.log('No guilds configured with tweet monitoring channel. Skipping timeline poll.');
-      console.log('--- Tweet Monitoring Cycle Completed ---');
-      return;
-    }
 
     let scraperClient;
     try {
@@ -316,41 +401,75 @@ async function pollTimeline() {
       console.error('Failed to fetch home timeline:', err.message);
     }
 
-    // 2. Fetch global search tweets matching the combined monitor keywords
-    const allMonitorKeywords = new Set();
-    for (const gc of guildConfigs) {
-      for (const kw of gc.monitorKeywords) {
-        allMonitorKeywords.add(kw.trim().toLowerCase());
-      }
-    }
-
-    const uniqueMonitorKeywords = Array.from(allMonitorKeywords);
-    if (uniqueMonitorKeywords.length > 0) {
-      // Construct OR query, quoting each phrase
-      const query = uniqueMonitorKeywords.map(kw => `"${kw}"`).join(' OR ');
+    // Helper to safely execute a search query and push to tweets array
+    async function searchTweetsSafe(query, limit = 20) {
       console.log(`Searching tweets globally for query: ${query}...`);
       try {
         const { SearchMode } = require('agent-twitter-client');
-        const searchRes = await scraperClient.searchTweets(query, 20, SearchMode.Latest);
-        
-        let searchCount = 0;
+        const searchRes = await scraperClient.searchTweets(query, limit, SearchMode.Latest);
+        const results = [];
+        let count = 0;
         if (searchRes && typeof searchRes[Symbol.asyncIterator] === 'function') {
           for await (const tweet of searchRes) {
-            tweets.push(tweet);
-            searchCount++;
-            if (searchCount >= 20) break;
+            results.push(tweet);
+            count++;
+            if (count >= limit) break;
           }
         } else if (Array.isArray(searchRes)) {
-          tweets = tweets.concat(searchRes);
-          searchCount = searchRes.length;
+          results.push(...searchRes);
         }
-        console.log(`Fetched ${searchCount} tweets from global search.`);
+        console.log(`Search for "${query}" returned ${results.length} tweets.`);
+        return results;
       } catch (err) {
-        console.error('Failed to fetch global search tweets:', err.message);
+        console.error(`Failed search for query "${query}":`, err.message);
+        return [];
       }
     }
 
-    for (const tweet of tweets) {
+    // Run Search 1: Robinhood targeted query (for Robinhood Early Alpha & Giveaway channels)
+    const robinhoodTweets = await searchTweetsSafe('(robinhood OR robi OR robin) (early OR alpha OR giveaway OR wl OR mint)', 20);
+    tweets = tweets.concat(robinhoodTweets);
+    await delay(1500); // safety rate-limit delay
+
+    // Run Search 2: Solana targeted query (for Solana NFT channel)
+    const solanaTweets = await searchTweetsSafe('(sol OR solana) (early OR alpha)', 20);
+    tweets = tweets.concat(solanaTweets);
+    await delay(1500); // safety rate-limit delay
+
+    // Run Search 3: Database keywords if any
+    const dbKeywords = new Set();
+    for (const gc of guildConfigs) {
+      for (const kw of gc.monitorKeywords) {
+        dbKeywords.add(kw.trim().toLowerCase());
+      }
+    }
+    const uniqueDbKeywords = Array.from(dbKeywords);
+    if (uniqueDbKeywords.length > 0) {
+      const dbQuery = uniqueDbKeywords.map(kw => `"${kw}"`).join(' OR ');
+      const dbTweets = await searchTweetsSafe(dbQuery, 20);
+      tweets = tweets.concat(dbTweets);
+    }
+
+    // Deduplicate tweets by ID
+    const seenTweetIds = new Set();
+    const uniqueTweets = [];
+    for (const t of tweets) {
+      const tId = t.id || t.rest_id || (t.legacy && t.legacy.id_str);
+      if (tId && !seenTweetIds.has(tId)) {
+        seenTweetIds.add(tId);
+        uniqueTweets.push(t);
+      }
+    }
+    console.log(`Total unique tweets collected for monitoring: ${uniqueTweets.length}`);
+
+    // Custom Channel Definitions
+    const CUSTOM_CHANNELS = {
+      ROBINHOOD_EARLY: '1525047487318982696',
+      ROBINHOOD_GIVEAWAY: '1525047622438621286',
+      SOL_EARLY: '1525047727442890834'
+    };
+
+    for (const tweet of uniqueTweets) {
       const tweetId = tweet.id || tweet.rest_id || (tweet.legacy && tweet.legacy.id_str);
       const text = tweet.text || (tweet.legacy && tweet.legacy.full_text) || '';
 
@@ -375,13 +494,164 @@ async function pollTimeline() {
         }
       }
 
-      const textLower = text.toLowerCase();
+      // Clean up HTML entities in the tweet text first
+      let cleanedText = text
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
 
+      const textLower = cleanedText.toLowerCase();
+
+      // Extract all @username mentions from text
+      const mentionRegex = /@(\w+)/g;
+      const matches = [...cleanedText.matchAll(mentionRegex)];
+      const mentions = matches.map(m => m[1]);
+
+      const authorUsername = (tweet.username || (tweet.core?.user_results?.result?.legacy?.screen_name) || '').toLowerCase();
+      const authorName = (tweet.name || (tweet.core?.user_results?.result?.legacy?.name) || '').toLowerCase();
+
+      // Check Robinhood Indicators
+      const hasRobinhoodIndicator = authorUsername.includes('robin') || 
+                                    authorUsername.includes('robi') ||
+                                    authorName.includes('robin') || 
+                                    authorName.includes('robi') ||
+                                    textLower.includes('robinhood') || 
+                                    textLower.includes('robin') || 
+                                    textLower.includes('robi') ||
+                                    textLower.includes('@robinhoodapp');
+
+      // Check early / alpha keywords
+      const earlyKeywords = ['early find', 'early alpha', 'found early', 'early', 'alpha'];
+      const hasEarlyKeyword = earlyKeywords.some(kw => {
+        const escapedKeyword = kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const regex = new RegExp(`\\b${escapedKeyword}\\b`, 'i');
+        return regex.test(cleanedText);
+      });
+
+      // NFT Related keywords
+      const nftKeywords = ['nft', 'pfp', 'mint', 'whitelist', 'wl', 'solana', 'eth', 'opensea', 'magiceden', 'crypto', 'ordinals', 'supply', 'collection'];
+      const isNftRelated = nftKeywords.some(kw => {
+        const escapedKeyword = kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const regex = new RegExp(`\\b${escapedKeyword}\\b`, 'i');
+        return regex.test(cleanedText);
+      });
+
+      // Standard Blacklist for non-giveaway channels
+      const standardBlacklist = [
+        /\bminted\b/i,
+        /\bgiveaway\b/i,
+        /\bgiveaways\b/i,
+        /\bgive\s+away\b/i,
+        /(?:\b\d*x)?gtd\b/i,
+        /\bdrop\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
+        /\bcomment\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
+        /\bleave\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
+        /\bwallet\s+address\b/i,
+        /\btelegram\b/i,
+        /\btg\b/i,
+        /\bprofit\b/i,
+        /\bgain\b/i,
+        /\bsaw\s+it\s+late\b/i,
+        /\brevealed\b/i,
+        /\breveal\b/i,
+        /\brevaled\b/i,
+        /\bburned\b/i,
+        /\bburn\b/i,
+        /\bmints?\s+today\b/i,
+        /\bmints?\s+now\b/i,
+        /\blive\s+mints?\b/i,
+        /\bmint\s+is\s+live\b/i
+      ];
+
+      // 1. Channel 1: Robinhood NFT Early Alpha (1525047487318982696)
+      if (hasRobinhoodIndicator && hasEarlyKeyword) {
+        let hasBlacklistWord = standardBlacklist.some(pattern => pattern.test(cleanedText));
+        if (!hasBlacklistWord) {
+          await sendTweetAlert(
+            CUSTOM_CHANNELS.ROBINHOOD_EARLY,
+            tweetId,
+            tweet,
+            cleanedText,
+            mentions,
+            '🚨 Robinhood Early Alpha',
+            0x1DA1F2 // Twitter Blue
+          );
+        }
+      }
+
+      // 2. Channel 2: Robinhood Giveaway Detected (1525047622438621286)
+      const giveawayKeywords = ['giveaway', 'give away', 'wl', 'whitelist', 'mint', 'airdrop', 'raffle', 'free mint'];
+      const hasGiveawayKeyword = giveawayKeywords.some(kw => {
+        const escapedKeyword = kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const regex = new RegExp(`\\b${escapedKeyword}\\b`, 'i');
+        return regex.test(cleanedText);
+      });
+
+      if (hasRobinhoodIndicator && hasGiveawayKeyword && isNftRelated) {
+        // Custom lighter blacklist for giveaways
+        const giveawayBlacklist = [
+          /\btelegram\b/i,
+          /\btg\b/i,
+          /\bprofit\b/i,
+          /\bgain\b/i,
+          /\bsaw\s+it\s+late\b/i,
+          /\brevealed\b/i,
+          /\breveal\b/i,
+          /\brevaled\b/i,
+          /\bburned\b/i,
+          /\bburn\b/i
+        ];
+        
+        let hasBlacklistWord = giveawayBlacklist.some(pattern => pattern.test(cleanedText));
+        if (!hasBlacklistWord) {
+          await sendTweetAlert(
+            CUSTOM_CHANNELS.ROBINHOOD_GIVEAWAY,
+            tweetId,
+            tweet,
+            cleanedText,
+            mentions,
+            '🎁 Robinhood NFT Giveaway Detected',
+            0xE74C3C, // Red/Coral
+            true // isGiveaway = true
+          );
+        }
+      }
+
+      // 3. Channel 3: Sol NFT Track (1525047727442890834)
+      const hasSolana = /\bsolana\b/i.test(cleanedText) || 
+                        /\bsol\b/i.test(cleanedText) || 
+                        textLower.includes('$sol') || 
+                        textLower.includes('sol/') || 
+                        textLower.includes('sol-');
+
+      if (hasSolana && hasEarlyKeyword && isNftRelated) {
+        let hasBlacklistWord = standardBlacklist.some(pattern => pattern.test(cleanedText));
+        if (!hasBlacklistWord) {
+          await sendTweetAlert(
+            CUSTOM_CHANNELS.SOL_EARLY,
+            tweetId,
+            tweet,
+            cleanedText,
+            mentions,
+            '☀️ Solana NFT Alpha Signal',
+            0x9945FF // Solana Purple
+          );
+        }
+      }
+
+      // 4. Default database-driven routing loop for any other servers/channels
       for (const gc of guildConfigs) {
+        // Skip if the configured monitor channel is one of the custom hardcoded ones
+        if (Object.values(CUSTOM_CHANNELS).includes(gc.monitorChannelId)) {
+          continue;
+        }
+
         try {
-          // Check if this guild already notified this tweet
           const alreadyNotified = await NotifiedTweet.findOne({
             guildId: gc.guildId,
+            channelId: gc.monitorChannelId,
             tweetId: tweetId
           });
 
@@ -389,17 +659,6 @@ async function pollTimeline() {
             continue;
           }
 
-          // Clean up HTML entities in the tweet text first
-          let cleanedText = text
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'");
-
-          const textLower = cleanedText.toLowerCase();
-
-          // Match against guild's monitor keywords with word boundaries
           let matched = false;
           let matchedKeyword = '';
 
@@ -413,10 +672,8 @@ async function pollTimeline() {
             }
           }
 
-          // Also check for supply pattern (e.g. 111/2000, 777 supply, supply: 777, 888 mint, size: 5555) in the tweet
           let hasSupplyPattern = false;
           const supplyRegex = /\b\d+\s*[\/|of]\s*\d+\b|\b\d+\s*(?:supply|mint|pcs|pieces)\b|\b(?:supply|size|mint)\s*[:\-]?\s*\d+\b/i;
-          // Strip out date patterns (like 7/9/26 or 07/09/2026) and year ranges (like 2006 / 2009) to prevent false positives matching as supply
           const textWithoutDates = cleanedText
             .replace(/\b\d{1,4}[\/\-]\d{1,2}[\/\-]\d{1,4}\b/g, '')
             .replace(/\b(19|20)\d{2}\s*[\/\-]\s*(19|20)\d{2}\b/g, '');
@@ -432,7 +689,6 @@ async function pollTimeline() {
             }
           }
 
-          // Special Robinhood/Robin/Robi Detector Check:
           if (!matched) {
             const authorUsernameLower = (tweet.username || (tweet.core?.user_results?.result?.legacy?.screen_name) || '').toLowerCase();
             const authorNameLower = (tweet.name || (tweet.core?.user_results?.result?.legacy?.name) || '').toLowerCase();
@@ -446,56 +702,15 @@ async function pollTimeline() {
           }
 
           if (!matched) {
-            continue; // No match for this guild
-          }
-
-          // === Blacklist Filter: Skip tweets containing spam/marketing keywords ===
-          const blacklistPatterns = [
-            /\bminted\b/i,
-            /\bgiveaway\b/i,
-            /\bgiveaways\b/i,
-            /\bgive\s+away\b/i,
-            /(?:\b\d*x)?gtd\b/i,
-            /\bdrop\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
-            /\bcomment\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
-            /\bleave\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
-            /\bwallet\s+address\b/i,
-            /\btelegram\b/i,
-            /\btg\b/i,
-            /\bprofit\b/i,
-            /\bgain\b/i,
-            /\bsaw\s+it\s+late\b/i,
-            /\brevealed\b/i,
-            /\breveal\b/i,
-            /\brevaled\b/i,
-            /\bburned\b/i,
-            /\bburn\b/i,
-            /\bmints?\s+today\b/i,
-            /\bmints?\s+now\b/i,
-            /\blive\s+mints?\b/i,
-            /\bmint\s+is\s+live\b/i
-          ];
-          
-          let hasBlacklistWord = false;
-          for (const pattern of blacklistPatterns) {
-            if (pattern.test(cleanedText)) {
-              hasBlacklistWord = true;
-              break;
-            }
-          }
-          
-          if (hasBlacklistWord) {
-            console.log(`Filtering out tweet ${tweetId} - contains blacklisted spam/marketing word.`);
             continue;
           }
 
-          // === Secondary Filter: Ensure it contains NFT/crypto indicators ===
-          // Every alert tweet must contain either:
-          // 1) "supply" (or match a supply pattern like 111/2222)
-          // OR
-          // 2) "mint" AND (tba, tbd, free, date, price, or today)
+          let hasBlacklistWord = standardBlacklist.some(pattern => pattern.test(cleanedText));
+          if (hasBlacklistWord) {
+            continue;
+          }
+
           const hasSupply = /\bsupply\b/i.test(cleanedText) || hasSupplyPattern;
-          
           const hasMint = /\bmint\b/i.test(cleanedText);
           const hasMintIndicators = hasMint && (
             /\btba\b/i.test(cleanedText) ||
@@ -508,23 +723,14 @@ async function pollTimeline() {
 
           const isRobinMatch = matchedKeyword === 'Robinhood/Robin/Robi Match';
           if (!isRobinMatch && !hasSupply && !hasMintIndicators) {
-            console.log(`Filtering out tweet ${tweetId} - lacks required supply or mint/TBA indicators.`);
-            continue; // Skip, does not look like an early collection launch
-          }
-
-          // Fetch target text channel
-          const channel = await client.channels.fetch(gc.monitorChannelId);
-          if (!channel || !channel.isTextBased()) {
-            console.warn(`Monitor channel ${gc.monitorChannelId} not found or not text-based for guild ${gc.guildId}.`);
             continue;
           }
 
-          // Extract all @username mentions from text
-          const mentionRegex = /@(\w+)/g;
-          const matches = [...cleanedText.matchAll(mentionRegex)];
-          const mentions = matches.map(m => m[1]);
+          const channel = await client.channels.fetch(gc.monitorChannelId);
+          if (!channel || !channel.isTextBased()) {
+            continue;
+          }
 
-          // Highlight matched keyword in tweet body
           let displayText = cleanedText;
           try {
             const escapedKeyword = matchedKeyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
@@ -534,17 +740,13 @@ async function pollTimeline() {
             // Fallback
           }
 
-          // Build premium anonymous embed (Clutter-free, no fields/footer)
           const embed = new EmbedBuilder()
-            .setColor(0xF1C40F) // Gold color for alpha alerts
+            .setColor(0xF1C40F)
             .setTitle('🚨 Alpha Signal Detected')
             .setDescription(displayText)
             .setTimestamp();
 
-          // Construct buttons array
           const allButtons = [];
-
-          // 1. Add Source Tweet Button
           const authorUsername = tweet.username || (tweet.core?.user_results?.result?.legacy?.screen_name);
           if (authorUsername) {
             allButtons.push(
@@ -555,7 +757,6 @@ async function pollTimeline() {
             );
           }
 
-          // 2. Add dynamic mention buttons (all of them, up to 24 mentions to allow max 25 buttons in total)
           const uniqueMentions = [...new Set(mentions)].slice(0, 24);
           for (const mention of uniqueMentions) {
             allButtons.push(
@@ -566,7 +767,6 @@ async function pollTimeline() {
             );
           }
 
-          // Chunk buttons into ActionRows (max 5 buttons per row, max 5 rows total = 25 buttons)
           const actionRows = [];
           for (let i = 0; i < allButtons.length; i += 5) {
             const chunk = allButtons.slice(i, i + 5);
@@ -579,13 +779,12 @@ async function pollTimeline() {
             messageOptions.components = actionRows;
           }
 
-          // Send alert
           await channel.send(messageOptions);
           console.log(`Anonymous tweet alert sent to guild ${gc.guildId} channel ${gc.monitorChannelId} for tweet ${tweetId}`);
 
-          // Persist notification record
           await NotifiedTweet.create({
             guildId: gc.guildId,
+            channelId: gc.monitorChannelId,
             tweetId: tweetId
           });
 
