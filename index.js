@@ -669,10 +669,17 @@ async function pollTimeline() {
               continue;
             }
 
+            // Condition 1: Must contain an early/alpha find indicator
             let matched = false;
             let matchedKeyword = '';
 
-            for (const kw of gc.monitorKeywords) {
+            const earlyKeywords = [
+              'early find', 'early nft find', 'interesting find', 'interesting finds',
+              'top alpha', 'early alpha', 'new find', 'new finds', 'alpha find', 'alpha',
+              'found early'
+            ];
+
+            for (const kw of earlyKeywords) {
               const escapedKeyword = kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
               const regex = new RegExp(`\\b${escapedKeyword}\\b`, 'i');
               if (regex.test(cleanedText)) {
@@ -682,6 +689,11 @@ async function pollTimeline() {
               }
             }
 
+            if (!matched) {
+              continue;
+            }
+
+            // Condition 2: Must contain supply keyword or supply number patterns
             let hasSupplyPattern = false;
             const supplyRegex = /\b\d+\s*[\/|of]\s*\d+\b|\b\d+\s*(?:supply|mint|pcs|pieces)\b|\b(?:supply|size|mint)\s*[:\-]?\s*\d+\b/i;
             const textWithoutDates = cleanedText
@@ -692,42 +704,22 @@ async function pollTimeline() {
               const normalizedMatch = match[0].toLowerCase().replace(/\s+/g, '');
               if (normalizedMatch !== '1/1' && normalizedMatch !== '1of1' && normalizedMatch !== '1on1') {
                 hasSupplyPattern = true;
-                if (!matched) {
-                  matched = true;
-                  matchedKeyword = `Supply Pattern (${match[0]})`;
-                }
               }
             }
 
-            const hasRobinhoodIndicator = authorUsername.includes('robin') || 
-                                          authorUsername.includes('robi') ||
-                                          authorName.includes('robin') || 
-                                          authorName.includes('robi') ||
-                                          textLower.includes('robinhood') || 
-                                          textLower.includes('robin') || 
-                                          textLower.includes('robi') ||
-                                          textLower.includes('@robinhoodapp');
-
-            if (!matched && hasRobinhoodIndicator) {
-              matched = true;
-              matchedKeyword = 'Robinhood/Robin/Robi Match';
-            }
-
-            if (!matched) {
+            const hasSupplyWord = textLower.includes('supply') || hasSupplyPattern;
+            if (!hasSupplyWord) {
               continue;
             }
 
-            // Crypto Validation Check: Ensure legacy monitor alerts are actually crypto/NFT related
-            const isLegacyCryptoRelated = hasRobinhoodIndicator || cryptoIndicators.some(ci => {
-              const escaped = ci.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-              const regex = new RegExp(`\\b${escaped}\\b`, 'i');
-              return regex.test(cleanedText) || cleanedText.toLowerCase().includes('$sol') || cleanedText.toLowerCase().includes('sol/') || cleanedText.toLowerCase().includes('sol-');
-            });
-
-            if (!isLegacyCryptoRelated) {
-              continue; // Skip non-crypto tweets
+            // Condition 3: Must specify a chain (solana, eth, base, polygon, etc.) or TBA/TBD
+            const chainRegex = /\b(solana|sol|ethereum|eth|evm|base|polygon|arbitrum|imx|immutablex|monad|sei|sui|aptos|tba|tbd|tbc)\b/i;
+            const hasChainOrTbd = chainRegex.test(cleanedText) || cleanedText.toLowerCase().includes('$sol') || cleanedText.toLowerCase().includes('$eth');
+            if (!hasChainOrTbd) {
+              continue;
             }
 
+            // Apply legacy blacklist
             const standardBlacklist = [
               /\bminted\b/i,
               /\bgiveaway\b/i,
@@ -767,22 +759,6 @@ async function pollTimeline() {
 
             let hasBlacklistWord = standardBlacklist.some(pattern => pattern.test(cleanedText));
             if (hasBlacklistWord) {
-              continue;
-            }
-
-            const hasSupply = /\bsupply\b/i.test(cleanedText) || hasSupplyPattern;
-            const hasMint = /\bmint\b/i.test(cleanedText);
-            const hasMintIndicators = hasMint && (
-              /\btba\b/i.test(cleanedText) ||
-              /\btbd\b/i.test(cleanedText) ||
-              /\bfree\b/i.test(cleanedText) ||
-              /\bdate\b/i.test(cleanedText) ||
-              /\bprice\b/i.test(cleanedText) ||
-              /\btoday\b/i.test(cleanedText)
-            );
-
-            const isRobinMatch = matchedKeyword === 'Robinhood/Robin/Robi Match';
-            if (!isRobinMatch && !hasSupply && !hasMintIndicators) {
               continue;
             }
 
