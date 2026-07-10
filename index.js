@@ -446,6 +446,12 @@ async function pollTimeline() {
       }
 
       if (tweetTimeMs) {
+        // Enforce min timestamp: ignore all tweets created before Bangladesh Time 3:13 PM on July 10, 2026 (UTC: 2026-07-10T09:13:00Z)
+        const minTimestamp = new Date('2026-07-10T09:13:00Z').getTime();
+        if (tweetTimeMs < minTimestamp) {
+          continue;
+        }
+
         const seventyTwoHoursAgo = Date.now() - 72 * 60 * 60 * 1000;
         if (tweetTimeMs < seventyTwoHoursAgo) {
           continue;
