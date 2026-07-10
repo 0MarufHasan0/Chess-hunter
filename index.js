@@ -388,78 +388,14 @@ async function pollTimeline() {
 
     let tweets = [];
 
-    // 1. Fetch home timeline (followed accounts)
+    // 1. Fetch home timeline (followed accounts only, as requested by the user to avoid spam from non-followed accounts)
     console.log('Fetching home timeline tweets...');
     try {
-      const timelineTweets = await scraperClient.fetchHomeTimeline(30);
+      const timelineTweets = await scraperClient.fetchHomeTimeline(80);
       console.log(`Fetched ${timelineTweets.length} tweets from following timeline.`);
       tweets = tweets.concat(timelineTweets);
     } catch (err) {
       console.error('Failed to fetch home timeline:', err.message);
-    }
-
-    // Helper to safely execute a search query and push to tweets array
-    async function searchTweetsSafe(query, limit = 20) {
-      console.log(`Searching tweets globally for query: ${query}...`);
-      try {
-        const { SearchMode } = require('agent-twitter-client');
-        const searchRes = await scraperClient.searchTweets(query, limit, SearchMode.Latest);
-        const results = [];
-        let count = 0;
-        if (searchRes && typeof searchRes[Symbol.asyncIterator] === 'function') {
-          for await (const tweet of searchRes) {
-            results.push(tweet);
-            count++;
-            if (count >= limit) break;
-          }
-        } else if (Array.isArray(searchRes)) {
-          results.push(...searchRes);
-        }
-        console.log(`Search for "${query}" returned ${results.length} tweets.`);
-        return results;
-      } catch (err) {
-        console.error(`Failed search for query "${query}":`, err.message);
-        return [];
-      }
-    }
-
-    // 2. Build and run search queries dynamically from active rules
-    const allQueries = new Set();
-    for (const gc of guildConfigs) {
-      if (gc.monitorRules && gc.monitorRules.length > 0) {
-        for (const rule of gc.monitorRules) {
-          const queryParts = [];
-          if (rule.authorKeywords && rule.authorKeywords.length > 0) {
-            const authQuery = rule.authorKeywords.map(k => `"${k.trim()}"`).join(' OR ');
-            queryParts.push(`(${authQuery})`);
-          }
-          if (rule.includeKeywords && rule.includeKeywords.length > 0) {
-            const incQuery = rule.includeKeywords.map(k => `"${k.trim()}"`).join(' OR ');
-            queryParts.push(`(${incQuery})`);
-          }
-          if (rule.requiredKeywords && rule.requiredKeywords.length > 0) {
-            const reqQuery = rule.requiredKeywords.map(k => `"${k.trim()}"`).join(' OR ');
-            queryParts.push(`(${reqQuery})`);
-          }
-          if (queryParts.length > 0) {
-            allQueries.add(queryParts.join(' '));
-          }
-        }
-      }
-
-      // Legacy support (if any)
-      if (gc.monitorChannelId && gc.monitorKeywords && gc.monitorKeywords.length > 0) {
-        const legacyQuery = gc.monitorKeywords.map(kw => `"${kw.trim()}"`).join(' OR ');
-        allQueries.add(legacyQuery);
-      }
-    }
-
-    const queriesToRun = Array.from(allQueries);
-    console.log(`Generated ${queriesToRun.length} dynamic search queries from rules.`);
-    for (const query of queriesToRun) {
-      const searchRes = await searchTweetsSafe(query, 20);
-      tweets = tweets.concat(searchRes);
-      await delay(1500); // safety rate-limit delay
     }
 
     // Deduplicate tweets by ID
@@ -472,7 +408,7 @@ async function pollTimeline() {
         uniqueTweets.push(t);
       }
     }
-    console.log(`Total unique tweets collected for monitoring: ${uniqueTweets.length}`);
+    console.log(`Total unique tweets collected for monitoring (Following only): ${uniqueTweets.length}`);
 
     for (const tweet of uniqueTweets) {
       const tweetId = tweet.id || tweet.rest_id || (tweet.legacy && tweet.legacy.id_str);
