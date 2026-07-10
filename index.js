@@ -676,7 +676,7 @@ async function pollTimeline() {
             const earlyKeywords = [
               'early find', 'early nft find', 'interesting find', 'interesting finds',
               'top alpha', 'early alpha', 'new find', 'new finds', 'alpha find', 'alpha',
-              'found early'
+              'found early', 'early nft project', 'early nft projects'
             ];
 
             for (const kw of earlyKeywords) {
@@ -712,10 +712,13 @@ async function pollTimeline() {
               continue;
             }
 
-            // Condition 3: Must specify a chain (solana, eth, base, polygon, etc.) or TBA/TBD
+            // Condition 3: Must specify a chain (solana, eth, base, polygon, etc.), TBA/TBD, or mention a project tag (@username)
             const chainRegex = /\b(solana|sol|ethereum|eth|evm|base|polygon|arbitrum|imx|immutablex|monad|sei|sui|aptos|tba|tbd|tbc)\b/i;
-            const hasChainOrTbd = chainRegex.test(cleanedText) || cleanedText.toLowerCase().includes('$sol') || cleanedText.toLowerCase().includes('$eth');
-            if (!hasChainOrTbd) {
+            const hasChainOrTbdOrTag = chainRegex.test(cleanedText) || 
+                                       cleanedText.toLowerCase().includes('$sol') || 
+                                       cleanedText.toLowerCase().includes('$eth') ||
+                                       /@\w+/.test(cleanedText);
+            if (!hasChainOrTbdOrTag) {
               continue;
             }
 
