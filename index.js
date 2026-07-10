@@ -426,6 +426,15 @@ async function pollTimeline() {
         continue;
       }
 
+      // Skip retweets entirely to ensure we only get tweets authored by the users we follow
+      const isRetweet = tweet.isRetweet || 
+                        tweet.retweetedStatus || 
+                        (tweet.legacy && tweet.legacy.retweeted_status) ||
+                        text.startsWith('RT @');
+      if (isRetweet) {
+        continue;
+      }
+
       // Skip tweets older than 72 hours to prevent historic back-alerting
       let tweetTimeMs = null;
       if (tweet.timestamp) {
@@ -591,6 +600,7 @@ async function pollTimeline() {
                   /\bgiveaways\b/i,
                   /\bgive\s+away\b/i,
                   /(?:\b\d*x)?gtd\b/i,
+                  /\braffles?\b/i,
                   /\bdrop\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
                   /\bcomment\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
                   /\bleave\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
@@ -737,6 +747,7 @@ async function pollTimeline() {
               /\bgiveaways\b/i,
               /\bgive\s+away\b/i,
               /(?:\b\d*x)?gtd\b/i,
+              /\braffles?\b/i,
               /\bdrop\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
               /\bcomment\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
               /\bleave\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
