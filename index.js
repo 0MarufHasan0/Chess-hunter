@@ -517,6 +517,9 @@ async function pollTimeline() {
       const authorUsername = (tweet.username || (tweet.core?.user_results?.result?.legacy?.screen_name) || '').toLowerCase();
       const authorName = (tweet.name || (tweet.core?.user_results?.result?.legacy?.name) || '').toLowerCase();
 
+      // NFT/Crypto/Web3 validation indicators to filter out unrelated tweets (like car ads matching 'alpha')
+      const cryptoIndicators = ['nft', 'pfp', 'mint', 'whitelist', 'wl', 'solana', 'sol ', 'eth ', 'ethereum', 'opensea', 'magiceden', 'crypto', 'ordinals', 'supply', 'collection', 'discord.gg', 'tba', 'tbd', 'airdrop'];
+
       // Evaluate rules for all guilds
       for (const gc of guildConfigs) {
         // 1. Process dynamic monitor rules
@@ -553,6 +556,19 @@ async function pollTimeline() {
               }
 
               if (authorMatched && includeMatched && requiredMatched) {
+                // Crypto Validation Check: Ensure it is crypto-related if it's not a known author match
+                const cryptoValidated = cryptoIndicators.some(ci => {
+                  const escaped = ci.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                  const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+                  return regex.test(cleanedText) || cleanedText.toLowerCase().includes('$sol') || cleanedText.toLowerCase().includes('sol/') || cleanedText.toLowerCase().includes('sol-');
+                });
+                
+                const isCryptoRelated = (rule.authorKeywords && rule.authorKeywords.length > 0 && authorMatched) || cryptoValidated;
+                
+                if (!isCryptoRelated) {
+                  continue; // Skip non-crypto tweets (e.g. car advertisements)
+                }
+
                 // Apply blacklist
                 const blacklistToUse = rule.isGiveaway ? [
                   /\btelegram\b/i,
@@ -564,7 +580,17 @@ async function pollTimeline() {
                   /\breveal\b/i,
                   /\brevaled\b/i,
                   /\bburned\b/i,
-                  /\bburn\b/i
+                  /\bburn\b/i,
+                  // Pump/Meme-token stats blacklist
+                  /\bMC\s*:\s*\$/i,
+                  /\bFDV\s*:\s*\$/i,
+                  /\bLiq\s*:\s*\$/i,
+                  /\bVol\s+1h\b/i,
+                  /\bDEX\s*:\s*/i,
+                  /\bpump\.fun\b/i,
+                  /\bca\s*:\s*[0-9a-zA-Z]{30,}/i,
+                  /\bcontract\s*address\b/i,
+                  /\bBuy\/Sell\s+Ratio\b/i
                 ] : [
                   /\bminted\b/i,
                   /\bgiveaway\b/i,
@@ -588,7 +614,17 @@ async function pollTimeline() {
                   /\bmints?\s+today\b/i,
                   /\bmints?\s+now\b/i,
                   /\blive\s+mints?\b/i,
-                  /\bmint\s+is\s+live\b/i
+                  /\bmint\s+is\s+live\b/i,
+                  // Pump/Meme-token stats blacklist
+                  /\bMC\s*:\s*\$/i,
+                  /\bFDV\s*:\s*\$/i,
+                  /\bLiq\s*:\s*\$/i,
+                  /\bVol\s+1h\b/i,
+                  /\bDEX\s*:\s*/i,
+                  /\bpump\.fun\b/i,
+                  /\bca\s*:\s*[0-9a-zA-Z]{30,}/i,
+                  /\bcontract\s*address\b/i,
+                  /\bBuy\/Sell\s+Ratio\b/i
                 ];
 
                 const hasBlacklistWord = blacklistToUse.some(pattern => pattern.test(cleanedText));
@@ -672,20 +708,33 @@ async function pollTimeline() {
               }
             }
 
-            if (!matched) {
-              const authorUsernameLower = (tweet.username || (tweet.core?.user_results?.result?.legacy?.screen_name) || '').toLowerCase();
-              const authorNameLower = (tweet.name || (tweet.core?.user_results?.result?.legacy?.name) || '').toLowerCase();
-              
-              if (authorUsernameLower.includes('robin') || authorUsernameLower.includes('robi') ||
-                  authorNameLower.includes('robin') || authorNameLower.includes('robi') ||
-                  textLower.includes('@robinhoodapp')) {
-                matched = true;
-                matchedKeyword = 'Robinhood/Robin/Robi Match';
-              }
+            const hasRobinhoodIndicator = authorUsername.includes('robin') || 
+                                          authorUsername.includes('robi') ||
+                                          authorName.includes('robin') || 
+                                          authorName.includes('robi') ||
+                                          textLower.includes('robinhood') || 
+                                          textLower.includes('robin') || 
+                                          textLower.includes('robi') ||
+                                          textLower.includes('@robinhoodapp');
+
+            if (!matched && hasRobinhoodIndicator) {
+              matched = true;
+              matchedKeyword = 'Robinhood/Robin/Robi Match';
             }
 
             if (!matched) {
               continue;
+            }
+
+            // Crypto Validation Check: Ensure legacy monitor alerts are actually crypto/NFT related
+            const isLegacyCryptoRelated = hasRobinhoodIndicator || cryptoIndicators.some(ci => {
+              const escaped = ci.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+              const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+              return regex.test(cleanedText) || cleanedText.toLowerCase().includes('$sol') || cleanedText.toLowerCase().includes('sol/') || cleanedText.toLowerCase().includes('sol-');
+            });
+
+            if (!isLegacyCryptoRelated) {
+              continue; // Skip non-crypto tweets
             }
 
             const standardBlacklist = [
@@ -711,7 +760,17 @@ async function pollTimeline() {
               /\bmints?\s+today\b/i,
               /\bmints?\s+now\b/i,
               /\blive\s+mints?\b/i,
-              /\bmint\s+is\s+live\b/i
+              /\bmint\s+is\s+live\b/i,
+              // Pump/Meme-token stats blacklist
+              /\bMC\s*:\s*\$/i,
+              /\bFDV\s*:\s*\$/i,
+              /\bLiq\s*:\s*\$/i,
+              /\bVol\s+1h\b/i,
+              /\bDEX\s*:\s*/i,
+              /\bpump\.fun\b/i,
+              /\bca\s*:\s*[0-9a-zA-Z]{30,}/i,
+              /\bcontract\s*address\b/i,
+              /\bBuy\/Sell\s+Ratio\b/i
             ];
 
             let hasBlacklistWord = standardBlacklist.some(pattern => pattern.test(cleanedText));
