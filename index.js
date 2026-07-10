@@ -1078,6 +1078,64 @@ client.on('interactionCreate', async (interaction) => {
       return interaction.reply({ content: `📋 **Dynamic Twitter Monitor Rules:**\n\n${ruleDescriptions}` });
     }
 
+    // 12. /checkprofile command
+    if (commandName === 'checkprofile') {
+      const username = interaction.options.getString('username').trim().replace(/^@/, '');
+      
+      await interaction.deferReply({ ephemeral: true });
+
+      try {
+        const clientInstance = await getTwitterScraper();
+        const profile = await clientInstance.getProfile(username);
+
+        if (!profile || (!profile.id && !profile.userId)) {
+          return interaction.editReply({ content: `❌ Profile not found for username \`@${username}\`.` });
+        }
+
+        const twitterId = profile.id || profile.userId;
+        const name = profile.name || profile.displayName || 'N/A';
+        const bio = profile.biography || profile.bio || profile.description || 'N/A';
+        const followers = profile.followersCount || 0;
+        const following = profile.followingCount || 0;
+        const tweets = profile.tweetsCount || 0;
+        const createdAtVal = profile.joined || profile.createdAt;
+        
+        let createdStr = 'Unknown';
+        let ageStr = 'Unknown';
+        
+        if (createdAtVal) {
+          const createdAt = new Date(createdAtVal);
+          createdStr = createdAt.toUTCString();
+          const now = new Date();
+          const ageDays = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
+          ageStr = `${ageDays} days ago`;
+        }
+
+        const embed = {
+          color: 0x1DA1F2,
+          title: `👤 Profile Information for @${username}`,
+          url: `https://x.com/${username}`,
+          fields: [
+            { name: 'Display Name', value: name, inline: true },
+            { name: 'X Username', value: `@${username}`, inline: true },
+            { name: 'User ID', value: twitterId, inline: true },
+            { name: 'Created At (UTC)', value: createdStr, inline: false },
+            { name: 'Account Age', value: ageStr, inline: true },
+            { name: 'Followers', value: followers.toLocaleString(), inline: true },
+            { name: 'Following', value: following.toLocaleString(), inline: true },
+            { name: 'Tweets Count', value: tweets.toLocaleString(), inline: true },
+            { name: 'Bio', value: bio, inline: false }
+          ],
+          timestamp: new Date().toISOString()
+        };
+
+        return interaction.editReply({ embeds: [embed] });
+      } catch (err) {
+        console.error(`Error checking profile for @${username}:`, err.message);
+        return interaction.editReply({ content: `❌ Error checking profile: ${err.message}` });
+      }
+    }
+
   } catch (error) {
     console.error('Error handling slash command interaction:', error);
     try {

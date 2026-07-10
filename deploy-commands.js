@@ -149,7 +149,16 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('listrules')
-    .setDescription('List all dynamic Twitter tracking rules for this server')
+    .setDescription('List all dynamic Twitter tracking rules for this server'),
+
+  new SlashCommandBuilder()
+    .setName('checkprofile')
+    .setDescription('Fetch X profile info including account age')
+    .addStringOption(option =>
+      option.setName('username')
+        .setDescription('The X username (handle) to check')
+        .setRequired(true)
+    )
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(token);
