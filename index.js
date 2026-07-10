@@ -504,6 +504,10 @@ async function pollTimeline() {
                   const escaped = ik.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
                   const isAlphaNumeric = /^[a-zA-Z0-9]+$/.test(ik);
                   if (isAlphaNumeric) {
+                    if (ik.toLowerCase() === 'sol') {
+                      const regex = new RegExp(`\\b(sol|solana)\\b`, 'i');
+                      return regex.test(cleanedText);
+                    }
                     const regex = new RegExp(`\\b${escaped}\\b`, 'i');
                     return regex.test(cleanedText);
                   } else {
@@ -519,6 +523,10 @@ async function pollTimeline() {
                   const escaped = rk.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
                   const isAlphaNumeric = /^[a-zA-Z0-9]+$/.test(rk);
                   if (isAlphaNumeric) {
+                    if (rk.toLowerCase() === 'sol') {
+                      const regex = new RegExp(`\\b(sol|solana)\\b`, 'i');
+                      return regex.test(cleanedText);
+                    }
                     const regex = new RegExp(`\\b${escaped}\\b`, 'i');
                     return regex.test(cleanedText);
                   } else {
@@ -1138,7 +1146,7 @@ client.once('ready', async () => {
               name: 'robinhood-giveaway',
               authorKeywords: ['robinhood', 'robin', 'robi'],
               includeKeywords: ['giveaway', 'give away', 'wl', 'whitelist', 'mint', 'airdrop', 'raffle', 'free mint', 'gtd', 'fcfs', 'follow', 'drop address', 'drop wallet', 'drop your address', 'rt', 'retweet'],
-              requiredKeywords: ['nft', 'pfp', 'mint', 'whitelist', 'wl', 'opensea', 'magiceden', 'supply', 'collection'],
+              requiredKeywords: [],
               isGiveaway: true
             },
             {
@@ -1146,7 +1154,7 @@ client.once('ready', async () => {
               name: 'sol-nft',
               authorKeywords: [],
               includeKeywords: ['early find', 'alpha', 'early alpha', 'interesting find', 'new alpha', 'free mint find', 'early nft find', 'found early'],
-              requiredKeywords: ['solana', 'sol'],
+              requiredKeywords: ['sol'],
               isGiveaway: false
             }
           ];
