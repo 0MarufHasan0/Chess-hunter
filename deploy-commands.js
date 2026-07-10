@@ -172,8 +172,19 @@ const rest = new REST({ version: '10' }).setToken(token);
       Routes.applicationCommands(clientId),
       { body: commands }
     );
-
     console.log('Successfully reloaded application (/) commands globally.');
+
+    // Also register commands specifically for their guild to make them appear instantly
+    const targetGuildId = '1035210317380198440';
+    try {
+      await rest.put(
+        Routes.applicationGuildCommands(clientId, targetGuildId),
+        { body: commands }
+      );
+      console.log(`Successfully reloaded application (/) commands for guild ${targetGuildId} (instant).`);
+    } catch (gErr) {
+      console.warn(`Guild commands reload warning for ${targetGuildId}:`, gErr.message);
+    }
   } catch (error) {
     console.error('Error deploying slash commands:', error);
   }
