@@ -1,5 +1,15 @@
 const mongoose = require('mongoose');
 
+// Schema for dynamic tweet monitoring rules
+const MonitorRuleSchema = new mongoose.Schema({
+  channelId: { type: String, required: true },
+  name: { type: String, required: true },
+  authorKeywords: { type: [String], default: [] },
+  includeKeywords: { type: [String], default: [] },
+  requiredKeywords: { type: [String], default: [] },
+  isGiveaway: { type: Boolean, default: false }
+});
+
 // Schema for tracking individual server (guild) configurations
 const GuildConfigSchema = new mongoose.Schema({
   guildId: { type: String, required: true, unique: true, index: true },
@@ -17,8 +27,9 @@ const GuildConfigSchema = new mongoose.Schema({
     ] 
   }, // Tracked keyword list for this guild
   mode: { type: String, enum: ['new-only', 'all-matches'], default: 'new-only' }, // Tracking mode
-  monitorChannelId: { type: String, default: null }, // Channel for followed accounts' tweet alerts
-  monitorKeywords: { type: [String], default: ['early find', 'alpha', 'early alpha', 'interesting find', 'new alpha', 'free mint find', 'early nft find', 'found early'] } // Keywords to watch in tweets
+  monitorChannelId: { type: String, default: null }, // Channel for followed accounts' tweet alerts (legacy)
+  monitorKeywords: { type: [String], default: ['early find', 'alpha', 'early alpha', 'interesting find', 'new alpha', 'free mint find', 'early nft find', 'found early'] }, // Keywords to watch in tweets (legacy)
+  monitorRules: { type: [MonitorRuleSchema], default: [] } // Dynamic monitor rules
 });
 
 // Schema for deduplicating alerts. Ensures we don't alert the same account to the same server twice.

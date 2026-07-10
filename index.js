@@ -376,10 +376,7 @@ async function pollTimeline() {
 
   try {
     // Fetch all guilds that have configured monitoring
-    const guildConfigs = await GuildConfig.find({
-      monitorChannelId: { $ne: null },
-      monitorKeywords: { $exists: true, $not: { $size: 0 } }
-    });
+    const guildConfigs = await GuildConfig.find({});
 
     let scraperClient;
     try {
@@ -426,28 +423,43 @@ async function pollTimeline() {
       }
     }
 
-    // Run Search 1: Robinhood targeted query (for Robinhood Early Alpha & Giveaway channels)
-    const robinhoodTweets = await searchTweetsSafe('(robinhood OR robi OR robin) (early OR alpha OR giveaway OR wl OR mint)', 20);
-    tweets = tweets.concat(robinhoodTweets);
-    await delay(1500); // safety rate-limit delay
-
-    // Run Search 2: Solana targeted query (for Solana NFT channel)
-    const solanaTweets = await searchTweetsSafe('(sol OR solana) (early OR alpha)', 20);
-    tweets = tweets.concat(solanaTweets);
-    await delay(1500); // safety rate-limit delay
-
-    // Run Search 3: Database keywords if any
-    const dbKeywords = new Set();
+    // 2. Build and run search queries dynamically from active rules
+    const allQueries = new Set();
     for (const gc of guildConfigs) {
-      for (const kw of gc.monitorKeywords) {
-        dbKeywords.add(kw.trim().toLowerCase());
+      if (gc.monitorRules && gc.monitorRules.length > 0) {
+        for (const rule of gc.monitorRules) {
+          const queryParts = [];
+          if (rule.authorKeywords && rule.authorKeywords.length > 0) {
+            const authQuery = rule.authorKeywords.map(k => `"${k.trim()}"`).join(' OR ');
+            queryParts.push(`(${authQuery})`);
+          }
+          if (rule.includeKeywords && rule.includeKeywords.length > 0) {
+            const incQuery = rule.includeKeywords.map(k => `"${k.trim()}"`).join(' OR ');
+            queryParts.push(`(${incQuery})`);
+          }
+          if (rule.requiredKeywords && rule.requiredKeywords.length > 0) {
+            const reqQuery = rule.requiredKeywords.map(k => `"${k.trim()}"`).join(' OR ');
+            queryParts.push(`(${reqQuery})`);
+          }
+          if (queryParts.length > 0) {
+            allQueries.add(queryParts.join(' '));
+          }
+        }
+      }
+
+      // Legacy support (if any)
+      if (gc.monitorChannelId && gc.monitorKeywords && gc.monitorKeywords.length > 0) {
+        const legacyQuery = gc.monitorKeywords.map(kw => `"${kw.trim()}"`).join(' OR ');
+        allQueries.add(legacyQuery);
       }
     }
-    const uniqueDbKeywords = Array.from(dbKeywords);
-    if (uniqueDbKeywords.length > 0) {
-      const dbQuery = uniqueDbKeywords.map(kw => `"${kw}"`).join(' OR ');
-      const dbTweets = await searchTweetsSafe(dbQuery, 20);
-      tweets = tweets.concat(dbTweets);
+
+    const queriesToRun = Array.from(allQueries);
+    console.log(`Generated ${queriesToRun.length} dynamic search queries from rules.`);
+    for (const query of queriesToRun) {
+      const searchRes = await searchTweetsSafe(query, 20);
+      tweets = tweets.concat(searchRes);
+      await delay(1500); // safety rate-limit delay
     }
 
     // Deduplicate tweets by ID
@@ -462,19 +474,12 @@ async function pollTimeline() {
     }
     console.log(`Total unique tweets collected for monitoring: ${uniqueTweets.length}`);
 
-    // Custom Channel Definitions
-    const CUSTOM_CHANNELS = {
-      ROBINHOOD_EARLY: '1525047487318982696',
-      ROBINHOOD_GIVEAWAY: '1525047622438621286',
-      SOL_EARLY: '1525047727442890834'
-    };
-
     for (const tweet of uniqueTweets) {
       const tweetId = tweet.id || tweet.rest_id || (tweet.legacy && tweet.legacy.id_str);
       const text = tweet.text || (tweet.legacy && tweet.legacy.full_text) || '';
 
       if (!tweetId || !text) {
-        continue; // Invalid tweet format or empty text
+        continue;
       }
 
       // Skip tweets older than 10 minutes to prevent historic back-alerting
@@ -490,7 +495,7 @@ async function pollTimeline() {
       if (tweetTimeMs) {
         const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
         if (tweetTimeMs < tenMinutesAgo) {
-          continue; // Silently skip historical tweets
+          continue;
         }
       }
 
@@ -512,284 +517,289 @@ async function pollTimeline() {
       const authorUsername = (tweet.username || (tweet.core?.user_results?.result?.legacy?.screen_name) || '').toLowerCase();
       const authorName = (tweet.name || (tweet.core?.user_results?.result?.legacy?.name) || '').toLowerCase();
 
-      // Check Robinhood Indicators
-      const hasRobinhoodIndicator = authorUsername.includes('robin') || 
-                                    authorUsername.includes('robi') ||
-                                    authorName.includes('robin') || 
-                                    authorName.includes('robi') ||
-                                    textLower.includes('robinhood') || 
-                                    textLower.includes('robin') || 
-                                    textLower.includes('robi') ||
-                                    textLower.includes('@robinhoodapp');
-
-      // Check early / alpha keywords
-      const earlyKeywords = ['early find', 'early alpha', 'found early', 'early', 'alpha'];
-      const hasEarlyKeyword = earlyKeywords.some(kw => {
-        const escapedKeyword = kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-        const regex = new RegExp(`\\b${escapedKeyword}\\b`, 'i');
-        return regex.test(cleanedText);
-      });
-
-      // NFT Related keywords
-      const nftKeywords = ['nft', 'pfp', 'mint', 'whitelist', 'wl', 'solana', 'eth', 'opensea', 'magiceden', 'crypto', 'ordinals', 'supply', 'collection'];
-      const isNftRelated = nftKeywords.some(kw => {
-        const escapedKeyword = kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-        const regex = new RegExp(`\\b${escapedKeyword}\\b`, 'i');
-        return regex.test(cleanedText);
-      });
-
-      // Standard Blacklist for non-giveaway channels
-      const standardBlacklist = [
-        /\bminted\b/i,
-        /\bgiveaway\b/i,
-        /\bgiveaways\b/i,
-        /\bgive\s+away\b/i,
-        /(?:\b\d*x)?gtd\b/i,
-        /\bdrop\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
-        /\bcomment\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
-        /\bleave\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
-        /\bwallet\s+address\b/i,
-        /\btelegram\b/i,
-        /\btg\b/i,
-        /\bprofit\b/i,
-        /\bgain\b/i,
-        /\bsaw\s+it\s+late\b/i,
-        /\brevealed\b/i,
-        /\breveal\b/i,
-        /\brevaled\b/i,
-        /\bburned\b/i,
-        /\bburn\b/i,
-        /\bmints?\s+today\b/i,
-        /\bmints?\s+now\b/i,
-        /\blive\s+mints?\b/i,
-        /\bmint\s+is\s+live\b/i
-      ];
-
-      // 1. Channel 1: Robinhood NFT Early Alpha (1525047487318982696)
-      if (hasRobinhoodIndicator && hasEarlyKeyword) {
-        let hasBlacklistWord = standardBlacklist.some(pattern => pattern.test(cleanedText));
-        if (!hasBlacklistWord) {
-          await sendTweetAlert(
-            CUSTOM_CHANNELS.ROBINHOOD_EARLY,
-            tweetId,
-            tweet,
-            cleanedText,
-            mentions,
-            '🚨 Robinhood Early Alpha',
-            0x1DA1F2 // Twitter Blue
-          );
-        }
-      }
-
-      // 2. Channel 2: Robinhood Giveaway Detected (1525047622438621286)
-      const giveawayKeywords = ['giveaway', 'give away', 'wl', 'whitelist', 'mint', 'airdrop', 'raffle', 'free mint'];
-      const hasGiveawayKeyword = giveawayKeywords.some(kw => {
-        const escapedKeyword = kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-        const regex = new RegExp(`\\b${escapedKeyword}\\b`, 'i');
-        return regex.test(cleanedText);
-      });
-
-      if (hasRobinhoodIndicator && hasGiveawayKeyword && isNftRelated) {
-        // Custom lighter blacklist for giveaways
-        const giveawayBlacklist = [
-          /\btelegram\b/i,
-          /\btg\b/i,
-          /\bprofit\b/i,
-          /\bgain\b/i,
-          /\bsaw\s+it\s+late\b/i,
-          /\brevealed\b/i,
-          /\breveal\b/i,
-          /\brevaled\b/i,
-          /\bburned\b/i,
-          /\bburn\b/i
-        ];
-        
-        let hasBlacklistWord = giveawayBlacklist.some(pattern => pattern.test(cleanedText));
-        if (!hasBlacklistWord) {
-          await sendTweetAlert(
-            CUSTOM_CHANNELS.ROBINHOOD_GIVEAWAY,
-            tweetId,
-            tweet,
-            cleanedText,
-            mentions,
-            '🎁 Robinhood NFT Giveaway Detected',
-            0xE74C3C, // Red/Coral
-            true // isGiveaway = true
-          );
-        }
-      }
-
-      // 3. Channel 3: Sol NFT Track (1525047727442890834)
-      const hasSolana = /\bsolana\b/i.test(cleanedText) || 
-                        /\bsol\b/i.test(cleanedText) || 
-                        textLower.includes('$sol') || 
-                        textLower.includes('sol/') || 
-                        textLower.includes('sol-');
-
-      if (hasSolana && hasEarlyKeyword && isNftRelated) {
-        let hasBlacklistWord = standardBlacklist.some(pattern => pattern.test(cleanedText));
-        if (!hasBlacklistWord) {
-          await sendTweetAlert(
-            CUSTOM_CHANNELS.SOL_EARLY,
-            tweetId,
-            tweet,
-            cleanedText,
-            mentions,
-            '☀️ Solana NFT Alpha Signal',
-            0x9945FF // Solana Purple
-          );
-        }
-      }
-
-      // 4. Default database-driven routing loop for any other servers/channels
+      // Evaluate rules for all guilds
       for (const gc of guildConfigs) {
-        // Skip if the configured monitor channel is one of the custom hardcoded ones
-        if (Object.values(CUSTOM_CHANNELS).includes(gc.monitorChannelId)) {
-          continue;
+        // 1. Process dynamic monitor rules
+        if (gc.monitorRules && gc.monitorRules.length > 0) {
+          for (const rule of gc.monitorRules) {
+            try {
+              // Check if the author matches (if authorKeywords is not empty)
+              let authorMatched = true;
+              if (rule.authorKeywords && rule.authorKeywords.length > 0) {
+                authorMatched = rule.authorKeywords.some(ak => {
+                  const term = ak.toLowerCase();
+                  return authorUsername.includes(term) || authorName.includes(term) || textLower.includes(term);
+                });
+              }
+
+              // Check if includes match (if includeKeywords is not empty)
+              let includeMatched = true;
+              if (rule.includeKeywords && rule.includeKeywords.length > 0) {
+                includeMatched = rule.includeKeywords.some(ik => {
+                  const escaped = ik.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                  const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+                  return regex.test(cleanedText);
+                });
+              }
+
+              // Check if required keywords match (if requiredKeywords is not empty)
+              let requiredMatched = true;
+              if (rule.requiredKeywords && rule.requiredKeywords.length > 0) {
+                requiredMatched = rule.requiredKeywords.some(rk => {
+                  const escaped = rk.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                  const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+                  return regex.test(cleanedText);
+                });
+              }
+
+              if (authorMatched && includeMatched && requiredMatched) {
+                // Apply blacklist
+                const blacklistToUse = rule.isGiveaway ? [
+                  /\btelegram\b/i,
+                  /\btg\b/i,
+                  /\bprofit\b/i,
+                  /\bgain\b/i,
+                  /\bsaw\s+it\s+late\b/i,
+                  /\brevealed\b/i,
+                  /\breveal\b/i,
+                  /\brevaled\b/i,
+                  /\bburned\b/i,
+                  /\bburn\b/i
+                ] : [
+                  /\bminted\b/i,
+                  /\bgiveaway\b/i,
+                  /\bgiveaways\b/i,
+                  /\bgive\s+away\b/i,
+                  /(?:\b\d*x)?gtd\b/i,
+                  /\bdrop\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
+                  /\bcomment\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
+                  /\bleave\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
+                  /\bwallet\s+address\b/i,
+                  /\btelegram\b/i,
+                  /\btg\b/i,
+                  /\bprofit\b/i,
+                  /\bgain\b/i,
+                  /\bsaw\s+it\s+late\b/i,
+                  /\brevealed\b/i,
+                  /\breveal\b/i,
+                  /\brevaled\b/i,
+                  /\bburned\b/i,
+                  /\bburn\b/i,
+                  /\bmints?\s+today\b/i,
+                  /\bmints?\s+now\b/i,
+                  /\blive\s+mints?\b/i,
+                  /\bmint\s+is\s+live\b/i
+                ];
+
+                const hasBlacklistWord = blacklistToUse.some(pattern => pattern.test(cleanedText));
+                if (!hasBlacklistWord) {
+                  let color = 0x1DA1F2; // Default Twitter Blue
+                  if (rule.isGiveaway) {
+                    color = 0xE74C3C; // Red/Coral
+                  } else if (textLower.includes('solana') || textLower.includes('sol ') || textLower.includes('magiceden')) {
+                    color = 0x9945FF; // Solana Purple
+                  } else if (textLower.includes('ethereum') || textLower.includes('eth ') || textLower.includes('opensea')) {
+                    color = 0x3C3C3D; // Ethereum Dark Slate
+                  } else {
+                    color = 0xF1C40F; // Gold
+                  }
+
+                  const title = rule.isGiveaway ? `🎁 ${rule.name.toUpperCase()} Giveaway` : `🚨 ${rule.name.toUpperCase()} Signal`;
+
+                  await sendTweetAlert(
+                    rule.channelId,
+                    tweetId,
+                    tweet,
+                    cleanedText,
+                    mentions,
+                    title,
+                    color,
+                    rule.isGiveaway
+                  );
+                }
+              }
+            } catch (err) {
+              console.error(`Error processing dynamic rule "${rule.name}" for guild ${gc.guildId}:`, err.message);
+            }
+          }
         }
 
-        try {
-          const alreadyNotified = await NotifiedTweet.findOne({
-            guildId: gc.guildId,
-            channelId: gc.monitorChannelId,
-            tweetId: tweetId
-          });
-
-          if (alreadyNotified) {
+        // 2. Process legacy monitorChannelId configurations
+        if (gc.monitorChannelId && gc.monitorKeywords && gc.monitorKeywords.length > 0) {
+          const isServiced = gc.monitorRules && gc.monitorRules.some(r => r.channelId === gc.monitorChannelId);
+          if (isServiced) {
             continue;
           }
 
-          let matched = false;
-          let matchedKeyword = '';
+          try {
+            const alreadyNotified = await NotifiedTweet.findOne({
+              guildId: gc.guildId,
+              channelId: gc.monitorChannelId,
+              tweetId: tweetId
+            });
 
-          for (const kw of gc.monitorKeywords) {
-            const escapedKeyword = kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-            const regex = new RegExp(`\\b${escapedKeyword}\\b`, 'i');
-            if (regex.test(cleanedText)) {
-              matched = true;
-              matchedKeyword = kw;
-              break;
+            if (alreadyNotified) {
+              continue;
             }
-          }
 
-          let hasSupplyPattern = false;
-          const supplyRegex = /\b\d+\s*[\/|of]\s*\d+\b|\b\d+\s*(?:supply|mint|pcs|pieces)\b|\b(?:supply|size|mint)\s*[:\-]?\s*\d+\b/i;
-          const textWithoutDates = cleanedText
-            .replace(/\b\d{1,4}[\/\-]\d{1,2}[\/\-]\d{1,4}\b/g, '')
-            .replace(/\b(19|20)\d{2}\s*[\/\-]\s*(19|20)\d{2}\b/g, '');
-          const match = textWithoutDates.match(supplyRegex);
-          if (match) {
-            const normalizedMatch = match[0].toLowerCase().replace(/\s+/g, '');
-            if (normalizedMatch !== '1/1' && normalizedMatch !== '1of1' && normalizedMatch !== '1on1') {
-              hasSupplyPattern = true;
-              if (!matched) {
+            let matched = false;
+            let matchedKeyword = '';
+
+            for (const kw of gc.monitorKeywords) {
+              const escapedKeyword = kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+              const regex = new RegExp(`\\b${escapedKeyword}\\b`, 'i');
+              if (regex.test(cleanedText)) {
                 matched = true;
-                matchedKeyword = `Supply Pattern (${match[0]})`;
+                matchedKeyword = kw;
+                break;
               }
             }
-          }
 
-          if (!matched) {
-            const authorUsernameLower = (tweet.username || (tweet.core?.user_results?.result?.legacy?.screen_name) || '').toLowerCase();
-            const authorNameLower = (tweet.name || (tweet.core?.user_results?.result?.legacy?.name) || '').toLowerCase();
-            
-            if (authorUsernameLower.includes('robin') || authorUsernameLower.includes('robi') ||
-                authorNameLower.includes('robin') || authorNameLower.includes('robi') ||
-                textLower.includes('@robinhoodapp')) {
-              matched = true;
-              matchedKeyword = 'Robinhood/Robin/Robi Match';
+            let hasSupplyPattern = false;
+            const supplyRegex = /\b\d+\s*[\/|of]\s*\d+\b|\b\d+\s*(?:supply|mint|pcs|pieces)\b|\b(?:supply|size|mint)\s*[:\-]?\s*\d+\b/i;
+            const textWithoutDates = cleanedText
+              .replace(/\b\d{1,4}[\/\-]\d{1,2}[\/\-]\d{1,4}\b/g, '')
+              .replace(/\b(19|20)\d{2}\s*[\/\-]\s*(19|20)\d{2}\b/g, '');
+            const match = textWithoutDates.match(supplyRegex);
+            if (match) {
+              const normalizedMatch = match[0].toLowerCase().replace(/\s+/g, '');
+              if (normalizedMatch !== '1/1' && normalizedMatch !== '1of1' && normalizedMatch !== '1on1') {
+                hasSupplyPattern = true;
+                if (!matched) {
+                  matched = true;
+                  matchedKeyword = `Supply Pattern (${match[0]})`;
+                }
+              }
             }
-          }
 
-          if (!matched) {
-            continue;
-          }
+            if (!matched) {
+              const authorUsernameLower = (tweet.username || (tweet.core?.user_results?.result?.legacy?.screen_name) || '').toLowerCase();
+              const authorNameLower = (tweet.name || (tweet.core?.user_results?.result?.legacy?.name) || '').toLowerCase();
+              
+              if (authorUsernameLower.includes('robin') || authorUsernameLower.includes('robi') ||
+                  authorNameLower.includes('robin') || authorNameLower.includes('robi') ||
+                  textLower.includes('@robinhoodapp')) {
+                matched = true;
+                matchedKeyword = 'Robinhood/Robin/Robi Match';
+              }
+            }
 
-          let hasBlacklistWord = standardBlacklist.some(pattern => pattern.test(cleanedText));
-          if (hasBlacklistWord) {
-            continue;
-          }
+            if (!matched) {
+              continue;
+            }
 
-          const hasSupply = /\bsupply\b/i.test(cleanedText) || hasSupplyPattern;
-          const hasMint = /\bmint\b/i.test(cleanedText);
-          const hasMintIndicators = hasMint && (
-            /\btba\b/i.test(cleanedText) ||
-            /\btbd\b/i.test(cleanedText) ||
-            /\bfree\b/i.test(cleanedText) ||
-            /\bdate\b/i.test(cleanedText) ||
-            /\bprice\b/i.test(cleanedText) ||
-            /\btoday\b/i.test(cleanedText)
-          );
+            const standardBlacklist = [
+              /\bminted\b/i,
+              /\bgiveaway\b/i,
+              /\bgiveaways\b/i,
+              /\bgive\s+away\b/i,
+              /(?:\b\d*x)?gtd\b/i,
+              /\bdrop\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
+              /\bcomment\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
+              /\bleave\s+(?:your\s+)?(?:eth\s+)?(?:wallet|address)\b/i,
+              /\bwallet\s+address\b/i,
+              /\btelegram\b/i,
+              /\btg\b/i,
+              /\bprofit\b/i,
+              /\bgain\b/i,
+              /\bsaw\s+it\s+late\b/i,
+              /\brevealed\b/i,
+              /\breveal\b/i,
+              /\brevaled\b/i,
+              /\bburned\b/i,
+              /\bburn\b/i,
+              /\bmints?\s+today\b/i,
+              /\bmints?\s+now\b/i,
+              /\blive\s+mints?\b/i,
+              /\bmint\s+is\s+live\b/i
+            ];
 
-          const isRobinMatch = matchedKeyword === 'Robinhood/Robin/Robi Match';
-          if (!isRobinMatch && !hasSupply && !hasMintIndicators) {
-            continue;
-          }
+            let hasBlacklistWord = standardBlacklist.some(pattern => pattern.test(cleanedText));
+            if (hasBlacklistWord) {
+              continue;
+            }
 
-          const channel = await client.channels.fetch(gc.monitorChannelId);
-          if (!channel || !channel.isTextBased()) {
-            continue;
-          }
-
-          let displayText = cleanedText;
-          try {
-            const escapedKeyword = matchedKeyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-            const regex = new RegExp(`\\b(${escapedKeyword})\\b`, 'gi');
-            displayText = displayText.replace(regex, (match) => `**__${match}__**`);
-          } catch (err) {
-            // Fallback
-          }
-
-          const embed = new EmbedBuilder()
-            .setColor(0xF1C40F)
-            .setTitle('🚨 Alpha Signal Detected')
-            .setDescription(displayText)
-            .setTimestamp();
-
-          const allButtons = [];
-          const authorUsername = tweet.username || (tweet.core?.user_results?.result?.legacy?.screen_name);
-          if (authorUsername) {
-            allButtons.push(
-              new ButtonBuilder()
-                .setLabel('Source Tweet')
-                .setURL(`https://x.com/${authorUsername}/status/${tweetId}`)
-                .setStyle(ButtonStyle.Link)
+            const hasSupply = /\bsupply\b/i.test(cleanedText) || hasSupplyPattern;
+            const hasMint = /\bmint\b/i.test(cleanedText);
+            const hasMintIndicators = hasMint && (
+              /\btba\b/i.test(cleanedText) ||
+              /\btbd\b/i.test(cleanedText) ||
+              /\bfree\b/i.test(cleanedText) ||
+              /\bdate\b/i.test(cleanedText) ||
+              /\bprice\b/i.test(cleanedText) ||
+              /\btoday\b/i.test(cleanedText)
             );
+
+            const isRobinMatch = matchedKeyword === 'Robinhood/Robin/Robi Match';
+            if (!isRobinMatch && !hasSupply && !hasMintIndicators) {
+              continue;
+            }
+
+            const channel = await client.channels.fetch(gc.monitorChannelId);
+            if (!channel || !channel.isTextBased()) {
+              continue;
+            }
+
+            let displayText = cleanedText;
+            try {
+              const escapedKeyword = matchedKeyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+              const regex = new RegExp(`\\b(${escapedKeyword})\\b`, 'gi');
+              displayText = displayText.replace(regex, (match) => `**__${match}__**`);
+            } catch (err) {
+              // Fallback
+            }
+
+            const embed = new EmbedBuilder()
+              .setColor(0xF1C40F)
+              .setTitle('🚨 Alpha Signal Detected')
+              .setDescription(displayText)
+              .setTimestamp();
+
+            const allButtons = [];
+            const authorUsername = tweet.username || (tweet.core?.user_results?.result?.legacy?.screen_name);
+            if (authorUsername) {
+              allButtons.push(
+                new ButtonBuilder()
+                  .setLabel('Source Tweet')
+                  .setURL(`https://x.com/${authorUsername}/status/${tweetId}`)
+                  .setStyle(ButtonStyle.Link)
+              );
+            }
+
+            const uniqueMentions = [...new Set(mentions)].slice(0, 24);
+            for (const mention of uniqueMentions) {
+              allButtons.push(
+                new ButtonBuilder()
+                  .setLabel(`@${mention}`)
+                  .setURL(`https://x.com/${mention}`)
+                  .setStyle(ButtonStyle.Link)
+              );
+            }
+
+            const actionRows = [];
+            for (let i = 0; i < allButtons.length; i += 5) {
+              const chunk = allButtons.slice(i, i + 5);
+              const row = new ActionRowBuilder().addComponents(chunk);
+              actionRows.push(row);
+            }
+
+            const messageOptions = { embeds: [embed] };
+            if (actionRows.length > 0) {
+              messageOptions.components = actionRows;
+            }
+
+            await channel.send(messageOptions);
+            console.log(`Anonymous tweet alert sent to guild ${gc.guildId} channel ${gc.monitorChannelId} for tweet ${tweetId}`);
+
+            await NotifiedTweet.create({
+              guildId: gc.guildId,
+              channelId: gc.monitorChannelId,
+              tweetId: tweetId
+            });
+
+          } catch (guildErr) {
+            console.error(`Error processing legacy tweet alert for guild ${gc.guildId}:`, guildErr.message);
           }
-
-          const uniqueMentions = [...new Set(mentions)].slice(0, 24);
-          for (const mention of uniqueMentions) {
-            allButtons.push(
-              new ButtonBuilder()
-                .setLabel(`@${mention}`)
-                .setURL(`https://x.com/${mention}`)
-                .setStyle(ButtonStyle.Link)
-            );
-          }
-
-          const actionRows = [];
-          for (let i = 0; i < allButtons.length; i += 5) {
-            const chunk = allButtons.slice(i, i + 5);
-            const row = new ActionRowBuilder().addComponents(chunk);
-            actionRows.push(row);
-          }
-
-          const messageOptions = { embeds: [embed] };
-          if (actionRows.length > 0) {
-            messageOptions.components = actionRows;
-          }
-
-          await channel.send(messageOptions);
-          console.log(`Anonymous tweet alert sent to guild ${gc.guildId} channel ${gc.monitorChannelId} for tweet ${tweetId}`);
-
-          await NotifiedTweet.create({
-            guildId: gc.guildId,
-            channelId: gc.monitorChannelId,
-            tweetId: tweetId
-          });
-
-        } catch (guildErr) {
-          console.error(`Error processing tweet alert for guild ${gc.guildId}:`, guildErr.message);
         }
       }
     }
@@ -948,6 +958,96 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
+    // 9. /addrule command
+    if (commandName === 'addrule') {
+      const channel = interaction.options.getChannel('channel');
+      const name = interaction.options.getString('name').trim().toLowerCase();
+      const authorStr = interaction.options.getString('author_keywords');
+      const includeStr = interaction.options.getString('include_keywords');
+      const requiredStr = interaction.options.getString('required_keywords');
+      const isGiveaway = interaction.options.getBoolean('is_giveaway') || false;
+
+      if (!/^[a-z0-9_-]+$/.test(name)) {
+        return interaction.reply({ content: '⚠️ Rule name must be alphanumeric and can only contain letters, numbers, dashes, and underscores.', ephemeral: true });
+      }
+
+      const authorKeywords = authorStr ? authorStr.split(',').map(k => k.trim().toLowerCase()).filter(Boolean) : [];
+      const includeKeywords = includeStr ? includeStr.split(',').map(k => k.trim().toLowerCase()).filter(Boolean) : [];
+      const requiredKeywords = requiredStr ? requiredStr.split(',').map(k => k.trim().toLowerCase()).filter(Boolean) : [];
+
+      if (authorKeywords.length === 0 && includeKeywords.length === 0 && requiredKeywords.length === 0) {
+        return interaction.reply({ content: '⚠️ You must specify at least one search/match criteria: `author_keywords`, `include_keywords`, or `required_keywords`.', ephemeral: true });
+      }
+
+      const configDoc = await GuildConfig.findOne({ guildId });
+      const monitorRules = configDoc ? configDoc.monitorRules : [];
+
+      const exists = monitorRules.some(r => r.name === name);
+      if (exists) {
+        return interaction.reply({ content: `⚠️ A rule named \`${name}\` already exists. Choose a different name or remove it first.`, ephemeral: true });
+      }
+
+      const newRule = {
+        channelId: channel.id,
+        name,
+        authorKeywords,
+        includeKeywords,
+        requiredKeywords,
+        isGiveaway
+      };
+
+      await GuildConfig.findOneAndUpdate(
+        { guildId },
+        { $push: { monitorRules: newRule } },
+        { upsert: true, new: true }
+      );
+
+      return interaction.reply({ content: `✅ Successfully added Twitter monitor rule **${name}** for channel ${channel}.`, ephemeral: true });
+    }
+
+    // 10. /removerule command
+    if (commandName === 'removerule') {
+      const name = interaction.options.getString('name').trim().toLowerCase();
+
+      const configDoc = await GuildConfig.findOne({ guildId });
+      const monitorRules = configDoc ? configDoc.monitorRules : [];
+
+      const exists = monitorRules.some(r => r.name === name);
+      if (!exists) {
+        return interaction.reply({ content: `⚠️ No rule found with the name \`${name}\`.`, ephemeral: true });
+      }
+
+      await GuildConfig.findOneAndUpdate(
+        { guildId },
+        { $pull: { monitorRules: { name } } },
+        { new: true }
+      );
+
+      return interaction.reply({ content: `❌ Successfully removed Twitter monitor rule: **${name}**.`, ephemeral: true });
+    }
+
+    // 11. /listrules command
+    if (commandName === 'listrules') {
+      const configDoc = await GuildConfig.findOne({ guildId });
+      const monitorRules = configDoc ? configDoc.monitorRules : [];
+
+      if (monitorRules.length === 0) {
+        return interaction.reply({ content: '📋 No dynamic Twitter monitoring rules are set for this server.' });
+      }
+
+      const ruleDescriptions = monitorRules.map((r, index) => {
+        const details = [];
+        if (r.authorKeywords && r.authorKeywords.length > 0) details.push(`• Authors: ${r.authorKeywords.map(k => `\`${k}\``).join(', ')}`);
+        if (r.includeKeywords && r.includeKeywords.length > 0) details.push(`• Matches: ${r.includeKeywords.map(k => `\`${k}\``).join(', ')}`);
+        if (r.requiredKeywords && r.requiredKeywords.length > 0) details.push(`• Required: ${r.requiredKeywords.map(k => `\`${k}\``).join(', ')}`);
+        details.push(`• Channel: <#${r.channelId}>`);
+        details.push(`• Mode: ${r.isGiveaway ? '🎁 Giveaway (Lighter Filter + Active/Ended status)' : '🚨 Standard Alpha'}`);
+        return `**${index + 1}. ${r.name.toUpperCase()}**\n${details.join('\n')}`;
+      }).join('\n\n');
+
+      return interaction.reply({ content: `📋 **Dynamic Twitter Monitor Rules:**\n\n${ruleDescriptions}` });
+    }
+
   } catch (error) {
     console.error('Error handling slash command interaction:', error);
     try {
@@ -971,6 +1071,49 @@ client.once('ready', async () => {
   try {
     await getTwitterScraper();
     console.log('Twitter client initial validation check passed.');
+
+    // Initialize default rules for the user's guild if they don't exist
+    try {
+      const channel1 = await client.channels.fetch('1525047487318982696');
+      if (channel1 && channel1.guild) {
+        const guildId = channel1.guild.id;
+        const configDoc = await GuildConfig.findOne({ guildId });
+        if (configDoc && (!configDoc.monitorRules || configDoc.monitorRules.length === 0)) {
+          console.log('Initializing default monitor rules for guild:', guildId);
+          configDoc.monitorRules = [
+            {
+              channelId: '1525047487318982696',
+              name: 'robinhood-early',
+              authorKeywords: ['robinhood', 'robin', 'robi'],
+              includeKeywords: ['early find', 'early alpha', 'found early', 'early', 'alpha'],
+              requiredKeywords: [],
+              isGiveaway: false
+            },
+            {
+              channelId: '1525047622438621286',
+              name: 'robinhood-giveaway',
+              authorKeywords: ['robinhood', 'robin', 'robi'],
+              includeKeywords: ['giveaway', 'give away', 'wl', 'whitelist', 'mint', 'airdrop', 'raffle', 'free mint'],
+              requiredKeywords: ['nft', 'pfp', 'mint', 'whitelist', 'wl', 'solana', 'eth', 'opensea', 'magiceden', 'crypto', 'ordinals', 'supply', 'collection'],
+              isGiveaway: true
+            },
+            {
+              channelId: '1525047727442890834',
+              name: 'sol-nft',
+              authorKeywords: [],
+              includeKeywords: ['early find', 'early alpha', 'found early', 'early', 'alpha'],
+              requiredKeywords: ['solana', 'sol', 'nft', 'pfp', 'mint', 'whitelist', 'wl', 'opensea', 'magiceden', 'supply', 'collection'],
+              isGiveaway: false
+            }
+          ];
+          await configDoc.save();
+          console.log('Default monitor rules successfully initialized.');
+        }
+      }
+    } catch (err) {
+      console.warn('Note: Default monitor rules could not be seeded on startup (channels might not be in cache yet):', err.message);
+    }
+
   } catch (err) {
     console.error('Twitter initial client validation check failed:', err.message);
   }

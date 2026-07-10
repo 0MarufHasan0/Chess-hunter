@@ -99,7 +99,57 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('listmonitor')
-    .setDescription('Show current tweet monitor settings (channel and keywords) for this server')
+    .setDescription('Show current tweet monitor settings (channel and keywords) for this server'),
+
+  new SlashCommandBuilder()
+    .setName('addrule')
+    .setDescription('Add a dynamic Twitter tracking rule')
+    .addChannelOption(option =>
+      option.setName('channel')
+        .setDescription('Target Discord channel')
+        .setRequired(true)
+        .addChannelTypes(ChannelType.GuildText)
+    )
+    .addStringOption(option =>
+      option.setName('name')
+        .setDescription('Unique name for the rule (alphanumeric)')
+        .setRequired(true)
+    )
+    .addStringOption(option =>
+      option.setName('author_keywords')
+        .setDescription('Comma-separated Twitter handles/display names to monitor')
+        .setRequired(false)
+    )
+    .addStringOption(option =>
+      option.setName('include_keywords')
+        .setDescription('Comma-separated keywords to search/match in tweet (e.g. early, alpha)')
+        .setRequired(false)
+    )
+    .addStringOption(option =>
+      option.setName('required_keywords')
+        .setDescription('Comma-separated required terms (e.g. nft, wl, sol)')
+        .setRequired(false)
+    )
+    .addBooleanOption(option =>
+      option.setName('is_giveaway')
+        .setDescription('True if this is a giveaway channel (enables status check)')
+        .setRequired(false)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
+    .setName('removerule')
+    .setDescription('Remove a dynamic Twitter tracking rule')
+    .addStringOption(option =>
+      option.setName('name')
+        .setDescription('The name of the rule to remove')
+        .setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
+    .setName('listrules')
+    .setDescription('List all dynamic Twitter tracking rules for this server')
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(token);
