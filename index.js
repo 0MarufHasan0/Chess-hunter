@@ -491,22 +491,9 @@ async function pollTimeline() {
               // Check if includes match (if includeKeywords is not empty)
               let includeMatched = true;
               if (rule.isGiveaway) {
-                // Custom Giveaway keyword check (gtd, fcfs, follow, drop address, etc.)
-                const hasGiveawayTerm = 
-                  textLower.includes('giveaway') ||
-                  textLower.includes('give-away') ||
-                  textLower.includes('give away') ||
-                  textLower.includes('fcfs') ||
-                  textLower.includes('follow') ||
-                  textLower.includes('drop address') ||
-                  textLower.includes('drop your address') ||
-                  textLower.includes('drop wallet') ||
-                  textLower.includes('drop eth') ||
-                  textLower.includes('drop sol') ||
-                  textLower.includes('rt') ||
-                  textLower.includes('retweet') ||
-                  /gtd/i.test(textLower); // Match gtd anywhere (10gtd, 10xgtd, etc.)
-
+                // Custom Giveaway keyword check (gtd, fcfs, follow, drop address, etc.) using word boundaries
+                const giveawayRegex = /\b(giveaway|give-away|give away|fcfs|follow|rt|retweet|drop\s+(?:your\s+)?(?:evm|eth|sol|wallet|address))\b/i;
+                const hasGiveawayTerm = giveawayRegex.test(cleanedText) || /(?:\b\d*x?)?gtd\b/i.test(cleanedText);
                 includeMatched = hasGiveawayTerm;
               } else if (rule.includeKeywords && rule.includeKeywords.length > 0) {
                 includeMatched = rule.includeKeywords.some(ik => {
