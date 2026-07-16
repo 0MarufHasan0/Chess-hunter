@@ -1466,17 +1466,91 @@ client.on('interactionCreate', async (interaction) => {
         const activeScraper = await getTwitterScraper();
         const { SearchMode } = require('agent-twitter-client');
 
-        // 2. Fetch replies
-        // We use a query like "to:username" which finds replies, and we filter by conversation status ID
-        const query = `to:${postAuthor}`;
-        const searchResults = activeScraper.searchTweets(query, 100, SearchMode.Latest);
-        
-        const replies = [];
-        for await (const t of searchResults) {
-          if (t.inReplyToStatusId === tweetId) {
-            replies.push(t);
-          }
+        // 2. Fetch replies directly from the TweetDetail GraphQL API using scraper's auth session
+        // This is extremely robust, uses the authenticated session, and bypasses Cloudflare search blocks!
+        const baseUrl = 'https://twitter.com/i/api/graphql/xOhkmRac04YFZmOzU9PJHg/TweetDetail';
+        const variables = {
+          focalTweetId: tweetId,
+          with_rux_injections: false,
+          includePromotedContent: true,
+          withCommunity: true,
+          withQuickPromoteEligibilityTweetFields: true,
+          withBirdwatchNotes: true,
+          withVoice: true,
+          withV2Timeline: true
+        };
+        const features = {
+          responsive_web_graphql_exclude_directive_enabled: true,
+          verified_phone_label_enabled: false,
+          creator_subscriptions_tweet_preview_api_enabled: true,
+          responsive_web_graphql_timeline_navigation_enabled: true,
+          responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
+          tweetypie_unmention_optimization_enabled: true,
+          responsive_web_edit_tweet_api_enabled: true,
+          graphql_is_translatable_rweb_tweet_is_translatable_enabled: true,
+          view_counts_everywhere_api_enabled: true,
+          longform_notetweets_consumption_enabled: true,
+          responsive_web_twitter_article_tweet_consumption_enabled: false,
+          tweet_awards_web_tipping_enabled: false,
+          freedom_of_speech_not_reach_fetch_enabled: true,
+          standardized_nudges_misinfo: true,
+          tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true,
+          longform_notetweets_rich_text_read_enabled: true,
+          longform_notetweets_inline_media_enabled: true,
+          responsive_web_media_download_video_enabled: false,
+          responsive_web_enhance_cards_enabled: false
+        };
+        const fieldToggles = {
+          withArticleRichContentState: false
+        };
+
+        const params = new URLSearchParams();
+        params.set('variables', JSON.stringify(variables));
+        params.set('features', JSON.stringify(features));
+        params.set('fieldToggles', JSON.stringify(fieldToggles));
+
+        const requestUrl = `${baseUrl}?${params.toString()}`;
+        const headers = new Headers();
+        await activeScraper.auth.installTo(headers, requestUrl);
+
+        const response = await activeScraper.auth.fetch(requestUrl, {
+          method: 'GET',
+          headers,
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          throw new Error(`Twitter API returned status ${response.status}: ${response.statusText}`);
         }
+
+        const rawData = await response.json();
+        
+        // Recursive helper to traverse the JSON response tree and extract all parsed legacy tweets
+        function extractTweets(obj, collected = []) {
+          if (!obj || typeof obj !== 'object') return collected;
+          if (obj.legacy && obj.core && obj.legacy.id_str) {
+            const legacy = obj.legacy;
+            const userLegacy = obj.core.user_results?.result?.legacy;
+            if (userLegacy) {
+              collected.push({
+                id: legacy.id_str,
+                text: legacy.full_text || legacy.text || '',
+                username: userLegacy.screen_name,
+                name: userLegacy.name,
+                inReplyToStatusId: legacy.in_reply_to_status_id_str,
+                conversationId: legacy.conversation_id_str,
+                createdAt: legacy.created_at
+              });
+            }
+          }
+          for (const key of Object.keys(obj)) {
+            extractTweets(obj[key], collected);
+          }
+          return collected;
+        }
+
+        const allExtractedTweets = extractTweets(rawData);
+        const replies = allExtractedTweets.filter(t => t.inReplyToStatusId === tweetId);
 
         if (replies.length === 0) {
           return interaction.editReply({ content: `❌ No replies found replying to status ID \`${tweetId}\`. Make sure the post is public and has replies.` });
