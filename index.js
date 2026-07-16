@@ -1336,10 +1336,66 @@ async function handleChessPickerModalSubmit(interaction) {
 
     if (!isProfileCheckNeeded) {
       const seenUsers = new Set();
+      const uniqueReplies = [];
       for (const r of replies) {
         const unameLower = r.username.toLowerCase();
         if (!seenUsers.has(unameLower)) {
           seenUsers.add(unameLower);
+          uniqueReplies.push(r);
+        }
+      }
+
+      const countToPick = Math.min(winnerCount, uniqueReplies.length);
+      const shuffled = [...uniqueReplies].sort(() => 0.5 - Math.random());
+      const selectedWinnersRaw = shuffled.slice(0, countToPick);
+
+      for (const r of selectedWinnersRaw) {
+        try {
+          let profile = null;
+          const cachedProfile = await TwitterProfileCache.findOne({ username: r.username.toLowerCase() });
+          if (cachedProfile) {
+            profile = {
+              name: cachedProfile.name,
+              followersCount: cachedProfile.followersCount,
+              joined: cachedProfile.joined,
+              avatar: cachedProfile.avatar
+            };
+          } else {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            const fetchedProfile = await activeScraper.getProfile(r.username);
+            if (fetchedProfile) {
+              profile = {
+                name: fetchedProfile.name || fetchedProfile.displayName || r.username,
+                followersCount: fetchedProfile.followersCount || 0,
+                joined: fetchedProfile.joined || null,
+                avatar: fetchedProfile.avatar || null
+              };
+              await TwitterProfileCache.create({
+                username: r.username.toLowerCase(),
+                name: profile.name,
+                followersCount: profile.followersCount,
+                joined: profile.joined,
+                avatar: profile.avatar
+              }).catch(() => {});
+            }
+          }
+
+          let ageDays = 0;
+          if (profile && profile.joined) {
+            const joinedDate = new Date(profile.joined);
+            ageDays = Math.floor((Date.now() - joinedDate.getTime()) / (1000 * 60 * 60 * 24));
+          }
+
+          candidates.push({
+            name: profile ? profile.name : (r.name || r.username),
+            handle: `@${r.username}`,
+            followers: profile ? profile.followersCount : 0,
+            age: ageDays,
+            avatar: profile ? profile.avatar : null,
+            replyId: r.id
+          });
+        } catch (err) {
+          console.error(`Error fetching winner profile @${r.username}:`, err.message);
           candidates.push({
             name: r.name || r.username,
             handle: `@${r.username}`,
@@ -1960,19 +2016,73 @@ client.on('interactionCreate', async (interaction) => {
         const isProfileCheckNeeded = (minFollowers > 0 || minAge > 0);
 
         if (!isProfileCheckNeeded) {
-          // No profile requirements: directly populate from the replies list.
-          // Bypasses getProfile entirely, so 0 API calls, 0% ban risk!
           const seenUsers = new Set();
+          const uniqueReplies = [];
           for (const r of replies) {
             const unameLower = r.username.toLowerCase();
             if (!seenUsers.has(unameLower)) {
               seenUsers.add(unameLower);
+              uniqueReplies.push(r);
+            }
+          }
+
+          const countToPick = Math.min(winnerCount, uniqueReplies.length);
+          const shuffled = [...uniqueReplies].sort(() => 0.5 - Math.random());
+          const selectedWinnersRaw = shuffled.slice(0, countToPick);
+
+          for (const r of selectedWinnersRaw) {
+            try {
+              let profile = null;
+              const cachedProfile = await TwitterProfileCache.findOne({ username: r.username.toLowerCase() });
+              if (cachedProfile) {
+                profile = {
+                  name: cachedProfile.name,
+                  followersCount: cachedProfile.followersCount,
+                  joined: cachedProfile.joined,
+                  avatar: cachedProfile.avatar
+                };
+              } else {
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                const fetchedProfile = await activeScraper.getProfile(r.username);
+                if (fetchedProfile) {
+                  profile = {
+                    name: fetchedProfile.name || fetchedProfile.displayName || r.username,
+                    followersCount: fetchedProfile.followersCount || 0,
+                    joined: fetchedProfile.joined || null,
+                    avatar: fetchedProfile.avatar || null
+                  };
+                  await TwitterProfileCache.create({
+                    username: r.username.toLowerCase(),
+                    name: profile.name,
+                    followersCount: profile.followersCount,
+                    joined: profile.joined,
+                    avatar: profile.avatar
+                  }).catch(() => {});
+                }
+              }
+
+              let ageDays = 0;
+              if (profile && profile.joined) {
+                const joinedDate = new Date(profile.joined);
+                ageDays = Math.floor((Date.now() - joinedDate.getTime()) / (1000 * 60 * 60 * 24));
+              }
+
+              candidates.push({
+                name: profile ? profile.name : (r.name || r.username),
+                handle: `@${r.username}`,
+                followers: profile ? profile.followersCount : 0,
+                age: ageDays,
+                avatar: profile ? profile.avatar : null,
+                replyId: r.id
+              });
+            } catch (err) {
+              console.error(`Error fetching winner profile @${r.username}:`, err.message);
               candidates.push({
                 name: r.name || r.username,
                 handle: `@${r.username}`,
                 followers: 0,
                 age: 0,
-                avatar: null, // Initials fallback avatar
+                avatar: null,
                 replyId: r.id
               });
             }
