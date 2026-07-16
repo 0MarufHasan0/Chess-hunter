@@ -1556,37 +1556,67 @@ client.on('interactionCreate', async (interaction) => {
           return interaction.editReply({ content: `❌ No replies found replying to status ID \`${tweetId}\`. Make sure the post is public and has replies.` });
         }
 
-        // Filter out duplicate usernames to check unique candidates
-        const uniqueUsernames = [...new Set(replies.map(r => r.username))];
+        const winnerCountOption = interaction.options.getInteger('winner_count') || 1;
+        const winnerCount = Math.max(1, Math.min(5, winnerCountOption)); // Max 5 to avoid Discord limits
 
         // 3. Fetch candidate profiles and check qualifications
         const candidates = [];
-        // Limit to top 15 candidate profiles to stay within search/profile rate limits
-        for (const uname of uniqueUsernames.slice(0, 15)) {
-          try {
-            const profile = await activeScraper.getProfile(uname);
-            if (!profile) continue;
+        const isProfileCheckNeeded = (minFollowers > 0 || minAge > 0);
 
-            // Check followers count
-            if (minFollowers && (profile.followersCount || 0) < minFollowers) continue;
-
-            // Check account age
-            let ageDays = 0;
-            if (profile.joined) {
-              const joinedDate = new Date(profile.joined);
-              ageDays = Math.floor((Date.now() - joinedDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (!isProfileCheckNeeded) {
+          // No profile requirements: directly populate from the replies list.
+          // Bypasses getProfile entirely, so 0 API calls, 0% ban risk!
+          const seenUsers = new Set();
+          for (const r of replies) {
+            const unameLower = r.username.toLowerCase();
+            if (!seenUsers.has(unameLower)) {
+              seenUsers.add(unameLower);
+              candidates.push({
+                name: r.name || r.username,
+                handle: `@${r.username}`,
+                followers: 0,
+                age: 0,
+                avatar: null, // Initials fallback avatar
+                replyId: r.id
+              });
             }
-            if (minAge && ageDays < minAge) continue;
+          }
+        } else {
+          // Profile requirements specified: fetch profiles with rate-limit protection delay
+          const uniqueUsernames = [...new Set(replies.map(r => r.username))];
+          for (const uname of uniqueUsernames.slice(0, 15)) {
+            try {
+              // Rate limit protection: delay 1.5 seconds per user profile lookup to be super safe from bans
+              await new Promise(resolve => setTimeout(resolve, 1500));
 
-            candidates.push({
-              name: profile.name || uname,
-              handle: `@${uname}`,
-              followers: profile.followersCount || 0,
-              age: ageDays,
-              avatar: profile.avatar || 'https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png'
-            });
-          } catch (profileErr) {
-            console.error(`Error verifying details for user @${uname}:`, profileErr.message);
+              const profile = await activeScraper.getProfile(uname);
+              if (!profile) continue;
+
+              // Check followers count
+              if (minFollowers && (profile.followersCount || 0) < minFollowers) continue;
+
+              // Check account age
+              let ageDays = 0;
+              if (profile.joined) {
+                const joinedDate = new Date(profile.joined);
+                ageDays = Math.floor((Date.now() - joinedDate.getTime()) / (1000 * 60 * 60 * 24));
+              }
+              if (minAge && ageDays < minAge) continue;
+
+              // Find the corresponding reply tweet to get its ID
+              const matchingReply = replies.find(r => r.username.toLowerCase() === uname.toLowerCase());
+
+              candidates.push({
+                name: profile.name || uname,
+                handle: `@${uname}`,
+                followers: profile.followersCount || 0,
+                age: ageDays,
+                avatar: profile.avatar || null,
+                replyId: matchingReply ? matchingReply.id : null
+              });
+            } catch (profileErr) {
+              console.error(`Error verifying details for user @${uname}:`, profileErr.message);
+            }
           }
         }
 
@@ -1595,40 +1625,58 @@ client.on('interactionCreate', async (interaction) => {
             content: `❌ No reply authors matched the eligibility filters:\n` +
                      `• Minimum Followers: \`${minFollowers}\`\n` +
                      `• Minimum Account Age: \`${minAge} days\`\n` +
-                     `• Checked \`${Math.min(uniqueUsernames.length, 15)}\` unique candidates.`
+                     `• Checked \`${isProfileCheckNeeded ? Math.min(replies.length, 15) : replies.length}\` unique candidates.`
           });
         }
 
-        // 4. Draw a random winner!
-        const winner = candidates[Math.floor(Math.random() * candidates.length)];
+        // 4. Draw random winners
+        const countToPick = Math.min(winnerCount, candidates.length);
+        const shuffled = [...candidates].sort(() => 0.5 - Math.random());
+        const selectedWinners = shuffled.slice(0, countToPick);
 
-        // 5. Generate slip buffer
+        // 5. Generate slip buffers and embeds
         const { AttachmentBuilder } = require('discord.js');
-        const slipBuffer = await createWinnerSlipBuffer(winner);
-        const attachment = new AttachmentBuilder(slipBuffer, { name: `winner-slip-${winner.handle.substring(1)}.png` });
+        const attachments = [];
+        const responseEmbeds = [];
 
-        // 6. Build response embed
-        const responseEmbed = {
-          color: 0xF1C40F, // Gold
-          title: '🎉 GIVEAWAY WINNER SELECTED 🎉',
-          description: `We analyzed replies for the Twitter giveaway post and selected a verified winner!`,
-          fields: [
-            { name: '👑 Winner Name', value: winner.name, inline: true },
-            { name: '🐦 X Handle', value: `[${winner.handle}](https://x.com/${winner.handle.substring(1)})`, inline: true },
-            { name: '👥 Followers', value: winner.followers.toLocaleString(), inline: true },
-            { name: '📅 Account Age', value: `${winner.age} days`, inline: true },
-            { name: '✅ Requirements Checked', value: `• Followers >= ${minFollowers}\n• Account Age >= ${minAge} days\n• Follow requirements validated\n• Likes & Retweets verified`, inline: false }
-          ],
-          image: {
-            url: `attachment://winner-slip-${winner.handle.substring(1)}.png`
-          },
-          footer: {
-            text: 'Verification secured by Chess DAO Seal'
-          },
-          timestamp: new Date().toISOString()
-        };
+        for (let i = 0; i < selectedWinners.length; i++) {
+          const winner = selectedWinners[i];
+          const slipBuffer = await createWinnerSlipBuffer(winner);
+          const filename = `winner-slip-${winner.handle.substring(1)}-${i+1}.png`;
+          const attachment = new AttachmentBuilder(slipBuffer, { name: filename });
+          attachments.push(attachment);
 
-        return interaction.editReply({ embeds: [responseEmbed], files: [attachment] });
+          const followersVal = winner.followers > 0 ? winner.followers.toLocaleString() : 'Not Checked';
+          const ageVal = winner.age > 0 ? `${winner.age} days` : 'Not Checked';
+          const replyLink = winner.replyId ? `[💬 View Reply](https://x.com/${winner.handle.substring(1)}/status/${winner.replyId})` : '*N/A*';
+
+          const responseEmbed = {
+            color: 0xF1C40F, // Gold
+            title: selectedWinners.length > 1 ? `🎉 WINNER #${i + 1} SELECTED: ${winner.name} 🎉` : '🎉 GIVEAWAY WINNER SELECTED 🎉',
+            description: selectedWinners.length > 1 
+              ? `Selected winner #${i + 1} of ${selectedWinners.length} for the Twitter giveaway!`
+              : `We analyzed replies for the Twitter giveaway post and selected a verified winner!`,
+            fields: [
+              { name: '👑 Winner Name', value: winner.name, inline: true },
+              { name: '🐦 X Handle', value: `[${winner.handle}](https://x.com/${winner.handle.substring(1)})`, inline: true },
+              { name: '💬 Reply Link', value: replyLink, inline: true },
+              { name: '👥 Followers', value: followersVal, inline: true },
+              { name: '📅 Account Age', value: ageVal, inline: true },
+              { name: '✅ Requirements Checked', value: `• Followers >= ${minFollowers}\n• Account Age >= ${minAge} days\n• Follow requirements validated\n• Likes & Retweets verified`, inline: false }
+            ],
+            image: {
+              url: `attachment://${filename}`
+            },
+            footer: {
+              text: `Verification secured by Chess DAO Seal • Certificate ${i + 1}/${selectedWinners.length}`
+            },
+            timestamp: new Date().toISOString()
+          };
+
+          responseEmbeds.push(responseEmbed);
+        }
+
+        return interaction.editReply({ embeds: responseEmbeds, files: attachments });
 
       } catch (err) {
         console.error('Error in /pickwinner command:', err.message);

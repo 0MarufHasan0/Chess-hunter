@@ -192,6 +192,11 @@ const commands = [
       option.setName('must_rt')
         .setDescription('Require user to have retweeted the post')
         .setRequired(false)
+    )
+    .addIntegerOption(option =>
+      option.setName('winner_count')
+        .setDescription('Number of winners to pick (default: 1, max: 5)')
+        .setRequired(false)
     ),
 
   new SlashCommandBuilder()
