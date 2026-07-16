@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const cron = require('node-cron');
 const config = require('./config');
-const { connectDB, GuildConfig, NotifiedAccount, NotifiedTweet } = require('./db');
+const { connectDB, GuildConfig, NotifiedAccount, NotifiedTweet, TwitterProfileCache } = require('./db');
 const { initTwitter, searchProfilesSafe, delay } = require('./twitter');
 
 // Initialize Discord Client
@@ -12,13 +12,54 @@ const client = new Client({
 // Global reference for the Twitter Scraper instance
 let scraper = null;
 
+let lastTwitterAlertTime = 0;
+async function sendTwitterStatusAlert(errorMsg) {
+  const now = Date.now();
+  if (now - lastTwitterAlertTime < 4 * 60 * 60 * 1000) {
+    return; // Alert at most once every 4 hours to avoid spam
+  }
+  lastTwitterAlertTime = now;
+  
+  console.warn(`[Twitter Status Alert] Sending alert to guilds: ${errorMsg}`);
+  
+  try {
+    const guildConfigs = await GuildConfig.find({ channelId: { $ne: null } });
+    for (const gc of guildConfigs) {
+      try {
+        const channel = await client.channels.fetch(gc.channelId);
+        if (channel && channel.isTextBased()) {
+          const alertEmbed = new EmbedBuilder()
+            .setColor(0xE74C3C) // Red
+            .setTitle('🚨 TWITTER CONNECTION ALERT 🚨')
+            .setDescription(
+              `The Chess Hunter bot has detected a connection issue or lag with the connected Twitter/X account.\n\n` +
+              `**Error Message:** \`${errorMsg}\`\n\n` +
+              `*Please verify that the Twitter account is active, not banned, and that cookies in \`cookies.json\` are valid. If you recently updated credentials in \`.env\`, restart the bot to re-authenticate.*`
+            )
+            .setTimestamp();
+          await channel.send({ embeds: [alertEmbed] });
+        }
+      } catch (chErr) {
+        console.error(`Failed to send alert to channel ${gc.channelId}:`, chErr.message);
+      }
+    }
+  } catch (dbErr) {
+    console.error('Failed to query guilds for status alert:', dbErr.message);
+  }
+}
+
 /**
  * Ensures the Twitter scraper is initialized and logged in.
  * If the session expires, it automatically re-initializes.
  */
 async function getTwitterScraper() {
   if (!scraper) {
-    scraper = await initTwitter(config.twitter);
+    try {
+      scraper = await initTwitter(config.twitter);
+    } catch (err) {
+      await sendTwitterStatusAlert(`Initialization failed: ${err.message}`);
+      throw err;
+    }
   } else {
     try {
       const loggedIn = await scraper.isLoggedIn();
@@ -28,6 +69,7 @@ async function getTwitterScraper() {
       }
     } catch (err) {
       console.error('Error checking Twitter login status, re-initializing scraper:', err.message);
+      await sendTwitterStatusAlert(`Session validation error: ${err.message}`);
       scraper = await initTwitter(config.twitter);
     }
   }
@@ -404,6 +446,7 @@ async function pollTimeline() {
       tweets = tweets.concat(timelineTweets);
     } catch (err) {
       console.error('Failed to fetch home timeline:', err.message);
+      await sendTwitterStatusAlert(`Timeline fetch failed: ${err.message}`);
     }
 
     // Deduplicate tweets by ID
@@ -1008,7 +1051,7 @@ async function createWinnerSlipBuffer(winner) {
   // Headers
   ctx.fillStyle = '#ffffff';
   ctx.font = '800 24px Arial, sans-serif';
-  ctx.fillText('♞  CHESS HUNTER GIVEAWAY', 50, 65);
+  ctx.fillText('♞  CHESS PICKER GIVEAWAY', 50, 65);
 
   ctx.fillStyle = '#00f2fe';
   ctx.font = '700 12px Arial, sans-serif';
@@ -1076,7 +1119,9 @@ async function createWinnerSlipBuffer(winner) {
 
   ctx.fillStyle = '#90a4ae';
   ctx.font = '600 13px Arial, sans-serif';
-  ctx.fillText(`Followers: ${winner.followers.toLocaleString()}   |   Account Age: ${winner.age} days`, 170, 255);
+  const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : 'Not Checked';
+  const ageText = winner.age > 0 ? `${winner.age} days` : 'Not Checked';
+  ctx.fillText(`Followers: ${followersText}   |   Account Age: ${ageText}`, 170, 255);
 
   // Bottom verification details
   const serialNo = `CH-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -1089,8 +1134,37 @@ async function createWinnerSlipBuffer(winner) {
   ctx.fillText(`VALIDATION HASH: ${hash}`, 50, 365);
   ctx.fillText(`DATE: ${dateStr}`, 50, 385);
 
-  // Seal
-  drawServerChessDAOSeal(ctx, 640, 220);
+  // Seal (Draw actual Chess DAO logo image from filesystem, if present)
+  let logoImg = null;
+  const fs = require('fs');
+  if (fs.existsSync('logo.jpg')) {
+    try {
+      const logoBuf = fs.readFileSync('logo.jpg');
+      logoImg = new Image();
+      logoImg.src = logoBuf;
+    } catch (logoErr) {
+      console.error('Failed to load logo.jpg:', logoErr.message);
+    }
+  }
+
+  if (logoImg) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(640, 220, 60, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(logoImg, 580, 160, 120, 120);
+    ctx.restore();
+
+    // Gold ring around logo
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(640, 220, 60, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    drawServerChessDAOSeal(ctx, 640, 220);
+  }
 
   return canvas.toBuffer('image/png');
 }
@@ -1582,14 +1656,48 @@ client.on('interactionCreate', async (interaction) => {
             }
           }
         } else {
-          // Profile requirements specified: fetch profiles with rate-limit protection delay
+          // Profile requirements specified: check cache first, then fetch profiles with rate-limit protection delay
           const uniqueUsernames = [...new Set(replies.map(r => r.username))];
           for (const uname of uniqueUsernames.slice(0, 15)) {
             try {
-              // Rate limit protection: delay 1.5 seconds per user profile lookup to be super safe from bans
-              await new Promise(resolve => setTimeout(resolve, 1500));
+              let profile = null;
+              
+              // 1. Check MongoDB Cache first
+              const cachedProfile = await TwitterProfileCache.findOne({ username: uname.toLowerCase() });
+              if (cachedProfile) {
+                profile = {
+                  name: cachedProfile.name,
+                  followersCount: cachedProfile.followersCount,
+                  joined: cachedProfile.joined,
+                  avatar: cachedProfile.avatar
+                };
+                console.log(`[Cache Hit] Retrieved profile for @${uname} from database cache.`);
+              } else {
+                // 2. Cache Miss: Fetch from Twitter with 1.5-second rate-limit protection delay
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                const fetchedProfile = await activeScraper.getProfile(uname);
+                if (fetchedProfile) {
+                  profile = {
+                    name: fetchedProfile.name || fetchedProfile.displayName || uname,
+                    followersCount: fetchedProfile.followersCount || 0,
+                    joined: fetchedProfile.joined || null,
+                    avatar: fetchedProfile.avatar || null
+                  };
+                  
+                  // Save to Cache (auto-expires in 24 hours)
+                  await TwitterProfileCache.create({
+                    username: uname.toLowerCase(),
+                    name: profile.name,
+                    followersCount: profile.followersCount,
+                    joined: profile.joined,
+                    avatar: profile.avatar
+                  }).catch(cacheErr => console.error(`Failed to cache profile for @${uname}:`, cacheErr.message));
+                  
+                  console.log(`[Cache Miss] Fetched profile for @${uname} from Twitter API and cached.`);
+                }
+              }
 
-              const profile = await activeScraper.getProfile(uname);
               if (!profile) continue;
 
               // Check followers count
@@ -1607,11 +1715,11 @@ client.on('interactionCreate', async (interaction) => {
               const matchingReply = replies.find(r => r.username.toLowerCase() === uname.toLowerCase());
 
               candidates.push({
-                name: profile.name || uname,
+                name: profile.name,
                 handle: `@${uname}`,
-                followers: profile.followersCount || 0,
+                followers: profile.followersCount,
                 age: ageDays,
-                avatar: profile.avatar || null,
+                avatar: profile.avatar,
                 replyId: matchingReply ? matchingReply.id : null
               });
             } catch (profileErr) {

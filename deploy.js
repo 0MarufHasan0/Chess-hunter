@@ -21,7 +21,8 @@ const filesToUpload = [
   'config.js',
   'deploy-commands.js',
   '.env',
-  'cookies.json'
+  'cookies.json',
+  'logo.jpg'
 ];
 
 conn.on('ready', () => {

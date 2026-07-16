@@ -53,9 +53,20 @@ const NotifiedTweetSchema = new mongoose.Schema({
 // Compound unique index for tweet alerts deduplication
 NotifiedTweetSchema.index({ guildId: 1, channelId: 1, tweetId: 1 }, { unique: true });
 
+// Schema for caching fetched Twitter profiles to prevent anti-scraping bans
+const TwitterProfileCacheSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true, index: true },
+  name: String,
+  followersCount: Number,
+  joined: String, // Stored as profile.joined raw string
+  avatar: String,
+  cachedAt: { type: Date, default: Date.now, expires: 86400 } // Auto-expires after 24 hours (86400 seconds)
+});
+
 const GuildConfig = mongoose.model('GuildConfig', GuildConfigSchema);
 const NotifiedAccount = mongoose.model('NotifiedAccount', NotifiedAccountSchema);
 const NotifiedTweet = mongoose.model('NotifiedTweet', NotifiedTweetSchema);
+const TwitterProfileCache = mongoose.model('TwitterProfileCache', TwitterProfileCacheSchema);
 
 /**
  * Connect to MongoDB using Mongoose.
@@ -75,5 +86,6 @@ module.exports = {
   connectDB,
   GuildConfig,
   NotifiedAccount,
-  NotifiedTweet
+  NotifiedTweet,
+  TwitterProfileCache
 };
