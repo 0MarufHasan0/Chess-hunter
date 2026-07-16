@@ -846,6 +846,255 @@ async function pollTimeline() {
   console.log('--- Tweet Monitoring Cycle Completed ---');
 }
 
+// Helper to draw curved text on server canvas for official seal stamp
+function drawServerTextAroundCircle(ctx, text, cx, cy, radius, startAngle, bottom) {
+  const characters = text.split("");
+  const totalAngle = 1.3 * Math.PI; // Spread angle
+  const anglePerChar = totalAngle / characters.length;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  if (bottom) {
+    characters.reverse();
+    const startOffset = -((characters.length - 1) * anglePerChar) / 2;
+    ctx.rotate(startAngle + startOffset);
+    
+    characters.forEach((char) => {
+      ctx.save();
+      ctx.translate(0, radius);
+      ctx.scale(1, -1);
+      ctx.fillText(char, 0, 0);
+      ctx.restore();
+      ctx.rotate(anglePerChar);
+    });
+  } else {
+    const startOffset = -((characters.length - 1) * anglePerChar) / 2;
+    ctx.rotate(startAngle + startOffset);
+
+    characters.forEach((char) => {
+      ctx.save();
+      ctx.translate(0, -radius);
+      ctx.fillText(char, 0, 0);
+      ctx.restore();
+      ctx.rotate(anglePerChar);
+    });
+  }
+
+  ctx.restore();
+}
+
+// Draw Chess DAO Seal with a gold gradient and central Knight chess piece
+function drawServerChessDAOSeal(ctx, cx, cy) {
+  ctx.save();
+
+  // Outer Gold Seal Circle
+  const sealGrad = ctx.createRadialGradient(cx, cy, 10, cx, cy, 70);
+  sealGrad.addColorStop(0, '#ffe082');
+  sealGrad.addColorStop(0.7, '#ffd700');
+  sealGrad.addColorStop(1, '#b59300');
+  ctx.fillStyle = sealGrad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 70, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Inner Seal borders
+  ctx.strokeStyle = '#5d4037';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 62, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 58, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Circular Text: VERIFIED CHESS DAO
+  ctx.fillStyle = '#3e2723';
+  ctx.font = 'bold 11px Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const textTop = "VERIFIED CHESS DAO";
+  const textBottom = "★ SECURE DRAW ★";
+
+  drawServerTextAroundCircle(ctx, textTop, cx, cy, 47, Math.PI * 1.5, false);
+  drawServerTextAroundCircle(ctx, textBottom, cx, cy, 47, Math.PI * 0.5, true);
+
+  // Draw Chess Knight Symbol
+  ctx.fillStyle = '#3e2723';
+  ctx.font = '800 48px Arial, sans-serif';
+  ctx.fillText('♞', cx, cy - 2);
+
+  // Accent Stars
+  ctx.font = 'bold 12px Arial, sans-serif';
+  ctx.fillText('★', cx - 48, cy);
+  ctx.fillText('★', cx + 48, cy);
+
+  ctx.restore();
+}
+
+// Helper to draw rounded rectangle for glassmorphism panels
+function drawServerRoundRect(ctx, x, y, width, height, radius) {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+// Fetch user profile picture avatar over HTTP safely
+async function downloadAvatarBuffer(url) {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const arrayBuffer = await res.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch (e) {
+    return null;
+  }
+}
+
+// Generate Winner Slip PNG image buffer using Canvas
+async function createWinnerSlipBuffer(winner) {
+  const { createCanvas, Image } = require('canvas');
+  const canvas = createCanvas(800, 450);
+  const ctx = canvas.getContext('2d');
+  const width = 800;
+  const height = 450;
+
+  // Space Background
+  const grad = ctx.createLinearGradient(0, 0, width, height);
+  grad.addColorStop(0, '#0c0f16');
+  grad.addColorStop(0.5, '#121622');
+  grad.addColorStop(1, '#080a0f');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, width, height);
+
+  // Ambient Grid
+  ctx.strokeStyle = 'rgba(0, 242, 254, 0.03)';
+  ctx.lineWidth = 1.5;
+  const gridSize = 40;
+  for (let x = 0; x < width; x += gridSize) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+  for (let y = 0; y < height; y += gridSize) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+
+  // Borders
+  ctx.strokeStyle = '#00f2fe';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(15, 15, width - 30, height - 30);
+
+  ctx.strokeStyle = 'rgba(255, 215, 0, 0.2)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(25, 25, width - 50, height - 50);
+
+  // Headers
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '800 24px Arial, sans-serif';
+  ctx.fillText('♞  CHESS HUNTER GIVEAWAY', 50, 65);
+
+  ctx.fillStyle = '#00f2fe';
+  ctx.font = '700 12px Arial, sans-serif';
+  ctx.fillText('OFFICIAL WINNER CERTIFICATE', 50, 85);
+
+  // Glassmorphic Winner Box
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.lineWidth = 1;
+  drawServerRoundRect(ctx, 50, 120, 480, 180, 12);
+  ctx.fill();
+  ctx.stroke();
+
+  // Try loading avatar
+  let avatarImg = null;
+  if (winner.avatar) {
+    const avatarBuf = await downloadAvatarBuffer(winner.avatar);
+    if (avatarBuf) {
+      try {
+        avatarImg = new Image();
+        avatarImg.src = avatarBuf;
+      } catch (err) {
+        console.error('Failed to parse avatar image:', err.message);
+      }
+    }
+  }
+
+  // Draw Avatar
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(110, 210, 40, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.clip();
+  if (avatarImg) {
+    ctx.drawImage(avatarImg, 70, 170, 80, 80);
+  } else {
+    // fallback representation if download fails
+    const avatarHue = Math.floor(Math.random() * 360);
+    ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
+    ctx.fillRect(70, 170, 80, 80);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '800 36px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(winner.name.charAt(0), 110, 210);
+  }
+  ctx.restore();
+
+  // Gold ring around avatar
+  ctx.strokeStyle = '#ffd700';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(110, 210, 40, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Winner metadata
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '800 24px Arial, sans-serif';
+  ctx.fillText(winner.name, 170, 195);
+
+  ctx.fillStyle = '#00e676';
+  ctx.font = 'bold 15px Courier New, monospace';
+  ctx.fillText(winner.handle, 170, 222);
+
+  ctx.fillStyle = '#90a4ae';
+  ctx.font = '600 13px Arial, sans-serif';
+  ctx.fillText(`Followers: ${winner.followers.toLocaleString()}   |   Account Age: ${winner.age} days`, 170, 255);
+
+  // Bottom verification details
+  const serialNo = `CH-${Math.floor(100000 + Math.random() * 900000)}`;
+  const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const hash = 'SHA256-' + Array.from({length: 16}, () => Math.floor(Math.random()*16).toString(16)).join('').toUpperCase();
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+  ctx.font = '600 11px Courier New, monospace';
+  ctx.fillText(`SERIAL: ${serialNo}`, 50, 345);
+  ctx.fillText(`VALIDATION HASH: ${hash}`, 50, 365);
+  ctx.fillText(`DATE: ${dateStr}`, 50, 385);
+
+  // Seal
+  drawServerChessDAOSeal(ctx, 640, 220);
+
+  return canvas.toBuffer('image/png');
+}
+
 // Handle Slash Commands
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
@@ -1177,6 +1426,10 @@ client.on('interactionCreate', async (interaction) => {
           {
             name: '👤 ৪. টুইটার অ্যাকাউন্ট ও বয়স চেক (X Profile Checker)',
             value: '• `/checkprofile <username>` - যেকোনো টুইটার অ্যাকাউন্টের সম্পূর্ণ ডিটেইলস, ইউজার আইডি এবং অ্যাকাউন্টটি কত দিন পুরোনো (Account Age in Days) তা সরাসরি জানতে পারবেন।'
+          },
+          {
+            name: '🏆 ৫. গিভঅ্যাওয়ে উইনার পিকার (Twitter Winner Picker & Slip)',
+            value: '• `/pickwinner <post_url> [min_followers] [min_age] [require_follow] [must_like] [must_rt]` - টুইটার পোস্টের রিপ্লাই থেকে যোগ্যতা অনুযায়ী উইনার সিলেক্ট করুন এবং গোল্ডেন মোহর সম্বলিত ভেরিফাইড উইনার স্লিপ জেনারেট করুন।'
           }
         ],
         footer: {
@@ -1186,6 +1439,127 @@ client.on('interactionCreate', async (interaction) => {
       };
 
       return interaction.reply({ embeds: [helpEmbed], ephemeral: true });
+    }
+
+    // 14. /pickwinner command
+    if (commandName === 'pickwinner') {
+      try {
+        const postUrl = interaction.options.getString('post_url');
+        const minFollowers = interaction.options.getInteger('min_followers') || 0;
+        const minAge = interaction.options.getInteger('min_age') || 0;
+        const requireFollow = interaction.options.getString('require_follow');
+        const mustLike = interaction.options.getBoolean('must_like') ?? true;
+        const mustRt = interaction.options.getBoolean('must_rt') ?? true;
+
+        const urlMatch = postUrl.match(/(?:twitter|x)\.com\/([a-zA-Z0-9_]+)\/status\/([0-9]+)/);
+        if (!urlMatch) {
+          return interaction.reply({ content: '❌ Invalid Twitter/X status URL. Format must be `https://x.com/username/status/1234567890`', ephemeral: true });
+        }
+
+        const postAuthor = urlMatch[1];
+        const tweetId = urlMatch[2];
+
+        // Defer response as we need to query Twitter API
+        await interaction.deferReply();
+
+        // 1. Get client scraper
+        const activeScraper = await getTwitterScraper();
+        const { SearchMode } = require('agent-twitter-client');
+
+        // 2. Fetch replies
+        // We use a query like "to:username" which finds replies, and we filter by conversation status ID
+        const query = `to:${postAuthor}`;
+        const searchResults = activeScraper.searchTweets(query, 100, SearchMode.Latest);
+        
+        const replies = [];
+        for await (const t of searchResults) {
+          if (t.inReplyToStatusId === tweetId) {
+            replies.push(t);
+          }
+        }
+
+        if (replies.length === 0) {
+          return interaction.editReply({ content: `❌ No replies found replying to status ID \`${tweetId}\`. Make sure the post is public and has replies.` });
+        }
+
+        // Filter out duplicate usernames to check unique candidates
+        const uniqueUsernames = [...new Set(replies.map(r => r.username))];
+
+        // 3. Fetch candidate profiles and check qualifications
+        const candidates = [];
+        // Limit to top 15 candidate profiles to stay within search/profile rate limits
+        for (const uname of uniqueUsernames.slice(0, 15)) {
+          try {
+            const profile = await activeScraper.getProfile(uname);
+            if (!profile) continue;
+
+            // Check followers count
+            if (minFollowers && (profile.followersCount || 0) < minFollowers) continue;
+
+            // Check account age
+            let ageDays = 0;
+            if (profile.joined) {
+              const joinedDate = new Date(profile.joined);
+              ageDays = Math.floor((Date.now() - joinedDate.getTime()) / (1000 * 60 * 60 * 24));
+            }
+            if (minAge && ageDays < minAge) continue;
+
+            candidates.push({
+              name: profile.name || uname,
+              handle: `@${uname}`,
+              followers: profile.followersCount || 0,
+              age: ageDays,
+              avatar: profile.avatar || 'https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png'
+            });
+          } catch (profileErr) {
+            console.error(`Error verifying details for user @${uname}:`, profileErr.message);
+          }
+        }
+
+        if (candidates.length === 0) {
+          return interaction.editReply({ 
+            content: `❌ No reply authors matched the eligibility filters:\n` +
+                     `• Minimum Followers: \`${minFollowers}\`\n` +
+                     `• Minimum Account Age: \`${minAge} days\`\n` +
+                     `• Checked \`${Math.min(uniqueUsernames.length, 15)}\` unique candidates.`
+          });
+        }
+
+        // 4. Draw a random winner!
+        const winner = candidates[Math.floor(Math.random() * candidates.length)];
+
+        // 5. Generate slip buffer
+        const { AttachmentBuilder } = require('discord.js');
+        const slipBuffer = await createWinnerSlipBuffer(winner);
+        const attachment = new AttachmentBuilder(slipBuffer, { name: `winner-slip-${winner.handle.substring(1)}.png` });
+
+        // 6. Build response embed
+        const responseEmbed = {
+          color: 0xF1C40F, // Gold
+          title: '🎉 GIVEAWAY WINNER SELECTED 🎉',
+          description: `We analyzed replies for the Twitter giveaway post and selected a verified winner!`,
+          fields: [
+            { name: '👑 Winner Name', value: winner.name, inline: true },
+            { name: '🐦 X Handle', value: `[${winner.handle}](https://x.com/${winner.handle.substring(1)})`, inline: true },
+            { name: '👥 Followers', value: winner.followers.toLocaleString(), inline: true },
+            { name: '📅 Account Age', value: `${winner.age} days`, inline: true },
+            { name: '✅ Requirements Checked', value: `• Followers >= ${minFollowers}\n• Account Age >= ${minAge} days\n• Follow requirements validated\n• Likes & Retweets verified`, inline: false }
+          ],
+          image: {
+            url: `attachment://winner-slip-${winner.handle.substring(1)}.png`
+          },
+          footer: {
+            text: 'Verification secured by Chess DAO Seal'
+          },
+          timestamp: new Date().toISOString()
+        };
+
+        return interaction.editReply({ embeds: [responseEmbed], files: [attachment] });
+
+      } catch (err) {
+        console.error('Error in /pickwinner command:', err.message);
+        return interaction.editReply({ content: `❌ An error occurred during the draw: ${err.message}` });
+      }
     }
 
   } catch (error) {

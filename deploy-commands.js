@@ -161,6 +161,40 @@ const commands = [
     ),
 
   new SlashCommandBuilder()
+    .setName('pickwinner')
+    .setDescription('Select a winner from Twitter/X replies & generate a verified Chess DAO slip')
+    .addStringOption(option =>
+      option.setName('post_url')
+        .setDescription('The URL of the Twitter/X post')
+        .setRequired(true)
+    )
+    .addIntegerOption(option =>
+      option.setName('min_followers')
+        .setDescription('Minimum followers required to win')
+        .setRequired(false)
+    )
+    .addIntegerOption(option =>
+      option.setName('min_age')
+        .setDescription('Minimum account age in days required to win')
+        .setRequired(false)
+    )
+    .addStringOption(option =>
+      option.setName('require_follow')
+        .setDescription('Comma-separated Twitter handles to check if followed (e.g. @ChessDAO)')
+        .setRequired(false)
+    )
+    .addBooleanOption(option =>
+      option.setName('must_like')
+        .setDescription('Require user to have liked the post')
+        .setRequired(false)
+    )
+    .addBooleanOption(option =>
+      option.setName('must_rt')
+        .setDescription('Require user to have retweeted the post')
+        .setRequired(false)
+    ),
+
+  new SlashCommandBuilder()
     .setName('help')
     .setDescription('Show the comprehensive help guide for the Chess Hunter bot')
 ].map(command => command.toJSON());

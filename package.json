@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "agent-twitter-client": "^0.0.18",
+    "canvas": "^3.2.3",
     "discord.js": "^14.15.3",
     "dotenv": "^16.4.5",
     "mongoose": "^8.4.3",
