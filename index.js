@@ -2212,7 +2212,52 @@ client.once('ready', async () => {
           }
           await configDoc.save();
           console.log('Default monitor rules successfully updated/initialized.');
-        }
+
+          // Setup permanent control panel button in admin channel
+          try {
+            const adminChannel = await client.channels.fetch('1527192472617484308');
+            if (adminChannel && adminChannel.isTextBased()) {
+              const messages = await adminChannel.messages.fetch({ limit: 20 });
+              const existingPanel = messages.find(m => m.author.id === client.user.id && m.content.includes('CHESS PICKER CONTROL PANEL'));
+              
+              const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                  .setCustomId('open_chess_picker_btn')
+                  .setLabel('🏆 Open Chess Picker')
+                  .setStyle(ButtonStyle.Success)
+              );
+
+              const panelContent = 
+                `🏆 **CHESS PICKER CONTROL PANEL (চেস পিকার কন্ট্রোল প্যানেল)** 🏆\n\n` +
+                `Click the button below to open the interactive draw form.\n` +
+                `(ইন্টারেক্টিভ ড্র ফর্ম খুলতে নিচের বাটনে ক্লিক করুন।)\n\n` +
+                `⚠️ **SAFE USE GUIDELINES / নিরাপদ ব্যবহারের নিয়মাবলি:**\n\n` +
+                `**[English]**\n` +
+                `• **Draw Interval:** Wait at least **5 minutes** between consecutive draws to prevent Twitter/X spam detection.\n` +
+                `• **Avoid Spamming:** Do not trigger multiple draws simultaneously.\n` +
+                `• **Profile Cache:** Checks for followers and account age are cached for 24 hours to protect your Twitter account from rate limits and scraping bans.\n\n` +
+                `**[বাংলা]**\n` +
+                `• **ড্র করার বিরতি:** পরপর ড্র করার মাঝে কমপক্ষে **৫ মিনিট** বিরতি রাখুন যাতে টুইটার অ্যাকাউন্ট স্প্যাম হিসেবে ডিটেক্ট না হয়।\n` +
+                `• **অতিরিক্ত ড্র এড়ানো:** একই সময়ে একসাথে একাধিক ড্র ট্রিগার করবেন না।\n` +
+                `• **প্রোফাইল ক্যাশ:** ফলোয়ার এবং অ্যাকাউন্ট এজ ভেরিফিকেশন ২৪ ঘণ্টার জন্য ডাটাবেসে ক্যাশ থাকবে, যা আপনার টুইটার আইডিকে রেট-লিমিট ও ব্যান হওয়া থেকে সম্পূর্ণ সুরক্ষিত রাখবে।`;
+
+              if (!existingPanel) {
+                await adminChannel.send({
+                  content: panelContent,
+                  components: [row]
+                });
+                console.log('Permanent Chess Picker control panel sent to admin channel.');
+              } else {
+                await existingPanel.edit({
+                  content: panelContent,
+                  components: [row]
+                });
+                console.log('Permanent Chess Picker control panel updated in admin channel.');
+              }
+            }
+          } catch (panelErr) {
+            console.error('Failed to setup permanent control panel button:', panelErr.message);
+          }
       }
     } catch (err) {
       console.warn('Note: Default monitor rules could not be seeded on startup (channels might not be in cache yet):', err.message);
