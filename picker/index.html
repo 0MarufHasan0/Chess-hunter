@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chess Hunter - Twitter Giveaway Picker & Winner Slip Generator</title>
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="Pick verified Twitter giveaway winners instantly and generate beautiful, custom download slips with Chess DAO verified seals.">
+  <meta name="keywords" content="twitter giveaway picker, chess dao, winner generator, twitter winner picker">
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Ambient background glow elements -->
+  <div class="bg-glow glow-1"></div>
+  <div class="bg-glow glow-2"></div>
+  <div class="bg-glow glow-3"></div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <span class="logo-icon">♞</span>
+        <h1>CHESS HUNTER</h1>
+        <span class="badge">Twitter Picker</span>
+      </div>
+      <p class="subtitle">Pick verified winners from X replies & download official Chess DAO slips</p>
+    </header>
+
+    <main class="main-layout">
+      <!-- Left side: Configuration Forms -->
+      <section class="config-panel glass-panel">
+        <h2 class="panel-title">🏆 Picker Configuration</h2>
+        
+        <div class="form-group">
+          <label for="post-link">Twitter Post Link</label>
+          <input type="url" id="post-link" placeholder="https://x.com/ChessDAO/status/123456789..." required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="require-follow">Must Follow (comma separated)</label>
+            <input type="text" id="require-follow" value="@ChessDAO" placeholder="@User1, @User2">
+          </div>
+          <div class="form-group">
+            <label for="winner-count">Winner Count</label>
+            <input type="number" id="winner-count" min="1" max="10" value="1">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="min-followers">Min Followers (<span id="followers-val">100</span>)</label>
+            <input type="range" id="min-followers" min="0" max="5000" step="50" value="100">
+          </div>
+          <div class="form-group">
+            <label for="min-age">Min Account Age (<span id="age-val">30</span> days)</label>
+            <input type="range" id="min-age" min="0" max="365" step="5" value="30">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Interaction Requirements</label>
+          <div class="checkbox-row">
+            <label class="custom-checkbox">
+              <input type="checkbox" id="req-like" checked>
+              <span class="checkmark"></span>
+              Must Like Post
+            </label>
+            <label class="custom-checkbox">
+              <input type="checkbox" id="req-rt" checked>
+              <span class="checkmark"></span>
+              Must Retweet Post
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="custom-replies">Custom / Pasted Replies (Optional)</label>
+          <textarea id="custom-replies" placeholder="Paste custom handles (one per line) or leave blank to auto-generate mock replies..."></textarea>
+        </div>
+
+        <button id="btn-draw" class="btn btn-primary btn-glow">
+          <span>⚡ Draw Winner ⚡</span>
+        </button>
+      </section>
+
+      <!-- Right side: Draw Selector & Winner Certificate Slip -->
+      <section class="result-panel">
+        <!-- Live Selector Slot -->
+        <div id="live-selector-card" class="glass-panel centered-content">
+          <div class="chess-icon-large">♜</div>
+          <h2 class="section-title">Ready for Draw</h2>
+          <p class="desc-text">Fill in the configurations and click the button to start the lottery</p>
+          
+          <!-- Spinning Lottery Wheel Container -->
+          <div id="spinner-container" class="spinner-container hidden">
+            <div class="spinner-overlay"></div>
+            <div id="spinner-list" class="spinner-list">
+              <!-- Dynamically populated candidate blocks -->
+            </div>
+            <div class="spinner-pointer"></div>
+          </div>
+        </div>
+
+        <!-- Winner Certificate Card -->
+        <div id="winner-card" class="glass-panel hidden">
+          <div class="success-header">
+            <span class="success-badge">🎉 WINNER SELECTED 🎉</span>
+          </div>
+
+          <div class="winner-info-display">
+            <img id="winner-avatar" src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80" alt="Avatar">
+            <div class="winner-meta">
+              <h3 id="winner-name">Magnus Carlsen</h3>
+              <p id="winner-handle">@MagnusCarlsen</p>
+              <div class="winner-stats">
+                <span id="stat-followers">👥 2.4M followers</span>
+                <span id="stat-age">📅 4,200 days old</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hidden Canvas for Certificate Generation -->
+          <canvas id="cert-canvas" width="800" height="450" class="hidden"></canvas>
+
+          <div class="cert-preview-container">
+            <div class="preview-title">Generated Certificate Slip Preview:</div>
+            <img id="cert-preview" class="cert-preview-img" alt="Certificate Preview">
+          </div>
+
+          <div class="action-buttons">
+            <button id="btn-download" class="btn btn-secondary">
+              <span>💾 Download Slip (PNG)</span>
+            </button>
+            <button id="btn-reset" class="btn btn-outline">
+              <span>🔄 Draw Again</span>
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Audio elements for feedback sound effects -->
+  <audio id="sound-tick" src="data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAgD4AAIA+AAABAAgAZGF0YQAAAAA="></audio>
+
+  <!-- Script -->
+  <script src="app.js"></script>
+</body>
+</html>
