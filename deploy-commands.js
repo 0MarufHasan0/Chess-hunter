@@ -212,16 +212,16 @@ const rest = new REST({ version: '10' }).setToken(token);
     );
     console.log('Successfully reloaded application (/) commands globally.');
 
-    // Also register commands specifically for their guild to make them appear instantly
+    // Clear guild-specific commands to prevent duplicate entries in Discord UI
     const targetGuildId = '1035210317380198440';
     try {
       await rest.put(
         Routes.applicationGuildCommands(clientId, targetGuildId),
-        { body: commands }
+        { body: [] }
       );
-      console.log(`Successfully reloaded application (/) commands for guild ${targetGuildId} (instant).`);
+      console.log(`Successfully cleared guild commands for guild ${targetGuildId} to prevent duplicates.`);
     } catch (gErr) {
-      console.warn(`Guild commands reload warning for ${targetGuildId}:`, gErr.message);
+      console.warn(`Guild commands clear warning for ${targetGuildId}:`, gErr.message);
     }
   } catch (error) {
     console.error('Error deploying slash commands:', error);
