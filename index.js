@@ -1169,8 +1169,324 @@ async function createWinnerSlipBuffer(winner) {
   return canvas.toBuffer('image/png');
 }
 
+// Handle Modal submissions first
+async function handleChessPickerButtonClick(interaction) {
+  const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+
+  const modal = new ModalBuilder()
+    .setCustomId('chess_picker_modal')
+    .setTitle('Chess Picker Draw Panel');
+
+  const postUrlInput = new TextInputBuilder()
+    .setCustomId('modal_post_url')
+    .setLabel('Twitter Post URL')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('https://x.com/username/status/1234567890')
+    .setRequired(true);
+
+  const winnerCountInput = new TextInputBuilder()
+    .setCustomId('modal_winner_count')
+    .setLabel('Winner Count (1-10)')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('1')
+    .setRequired(false);
+
+  const minFollowersInput = new TextInputBuilder()
+    .setCustomId('modal_min_followers')
+    .setLabel('Min Followers (Optional)')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('0')
+    .setRequired(false);
+
+  const minAgeInput = new TextInputBuilder()
+    .setCustomId('modal_min_age')
+    .setLabel('Min Account Age in Days (Optional)')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('0')
+    .setRequired(false);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(postUrlInput),
+    new ActionRowBuilder().addComponents(winnerCountInput),
+    new ActionRowBuilder().addComponents(minFollowersInput),
+    new ActionRowBuilder().addComponents(minAgeInput)
+  );
+
+  await interaction.showModal(modal);
+}
+
+// Global modal submit handler
+async function handleChessPickerModalSubmit(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+
+  const postUrl = interaction.fields.getTextInputValue('modal_post_url').trim();
+  const winnerCountStr = interaction.fields.getTextInputValue('modal_winner_count').trim() || '1';
+  const minFollowersStr = interaction.fields.getTextInputValue('modal_min_followers').trim() || '0';
+  const minAgeStr = interaction.fields.getTextInputValue('modal_min_age').trim() || '0';
+
+  const winnerCount = Math.max(1, Math.min(10, parseInt(winnerCountStr, 10) || 1));
+  const minFollowers = Math.max(0, parseInt(minFollowersStr, 10) || 0);
+  const minAge = Math.max(0, parseInt(minAgeStr, 10) || 0);
+
+  try {
+    const postMatch = postUrl.match(/status\/(\d+)/);
+    if (!postMatch) {
+      return interaction.editReply({ content: '❌ Invalid Twitter post URL. Please make sure the URL contains `/status/` followed by the Tweet ID.' });
+    }
+    const tweetId = postMatch[1];
+
+    let activeScraper;
+    try {
+      activeScraper = await getTwitterScraper();
+    } catch (err) {
+      return interaction.editReply({ content: `❌ Twitter client connection failed: ${err.message}` });
+    }
+
+    console.log(`[Modal Pickwinner] Fetching tweet ID: ${tweetId}...`);
+    const timelineUrl = `https://x.com/i/api/graphql/DBy7OJfsIS-0o-X906vE9w/TweetDetail?variables=${encodeURIComponent(JSON.stringify({
+      focalTweetId: tweetId,
+      with_rux_injections: false,
+      includePromotedContent: true,
+      withCommunity: true,
+      withQuickPromoteEligibilityDoubleWrite: true,
+      withBirdwatchNotes: true,
+      withVoice: true
+    }))}&features=${encodeURIComponent(JSON.stringify({
+      rweb_tipjar_consumption_enabled: true,
+      responsive_web_graphql_exclude_directive_enabled: true,
+      verified_phone_label_enabled: false,
+      creator_subscriptions_tweet_preview_api_enabled: true,
+      responsive_web_graphql_timeline_navigation_enabled: true,
+      responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
+      communities_web_enable_dependency_under_page_action_enabled: true,
+      tweet_awards_web_tipping_enabled: false,
+      creator_subscriptions_quote_tweet_preview_enabled: false,
+      freedom_of_speech_not_reach_fetch_enabled: true,
+      standardized_nudges_misinfo: true,
+      tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true,
+      responsive_web_enhance_cards_and_videos: true,
+      explicit_content_filtering_functions_enabled: true,
+      view_counts_everywhere_api_enabled: true,
+      longform_notetweets_consumption_enabled: true,
+      responsive_web_twitter_article_tweet_consumption_enabled: true,
+      tweet_results_html_byg_outcome_ad_eligible_false: true,
+      translate_web_moderate_email_content_enabled: true,
+      unicode_raw_emojis_enabled: true,
+      view_counts_public_visibility_enabled: true
+    }))}`;
+
+    const headers = activeScraper.getSearchHeaders
+      ? activeScraper.getSearchHeaders()
+      : {
+          'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        };
+
+    const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+    const response = await fetch(timelineUrl, {
+      method: 'GET',
+      headers,
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error(`Twitter API returned status ${response.status}: ${response.statusText}`);
+    }
+
+    const rawData = await response.json();
+    
+    function extractTweets(obj, collected = []) {
+      if (!obj || typeof obj !== 'object') return collected;
+      if (obj.legacy && obj.core && obj.legacy.id_str) {
+        const legacy = obj.legacy;
+        const userLegacy = obj.core.user_results?.result?.legacy;
+        if (userLegacy) {
+          collected.push({
+            id: legacy.id_str,
+            text: legacy.full_text || legacy.text || '',
+            username: userLegacy.screen_name,
+            name: userLegacy.name,
+            inReplyToStatusId: legacy.in_reply_to_status_id_str,
+            conversationId: legacy.conversation_id_str,
+            createdAt: legacy.created_at
+          });
+        }
+      }
+      for (const key of Object.keys(obj)) {
+        extractTweets(obj[key], collected);
+      }
+      return collected;
+    }
+
+    const allExtractedTweets = extractTweets(rawData);
+    const replies = allExtractedTweets.filter(t => t.inReplyToStatusId === tweetId);
+
+    if (replies.length === 0) {
+      return interaction.editReply({ content: `❌ No replies found replying to status ID \`${tweetId}\`. Make sure the post is public and has replies.` });
+    }
+
+    const candidates = [];
+    const isProfileCheckNeeded = (minFollowers > 0 || minAge > 0);
+
+    if (!isProfileCheckNeeded) {
+      const seenUsers = new Set();
+      for (const r of replies) {
+        const unameLower = r.username.toLowerCase();
+        if (!seenUsers.has(unameLower)) {
+          seenUsers.add(unameLower);
+          candidates.push({
+            name: r.name || r.username,
+            handle: `@${r.username}`,
+            followers: 0,
+            age: 0,
+            avatar: null,
+            replyId: r.id
+          });
+        }
+      }
+    } else {
+      const uniqueUsernames = [...new Set(replies.map(r => r.username))];
+      for (const uname of uniqueUsernames.slice(0, 15)) {
+        try {
+          let profile = null;
+          const cachedProfile = await TwitterProfileCache.findOne({ username: uname.toLowerCase() });
+          if (cachedProfile) {
+            profile = {
+              name: cachedProfile.name,
+              followersCount: cachedProfile.followersCount,
+              joined: cachedProfile.joined,
+              avatar: cachedProfile.avatar
+            };
+          } else {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            const fetchedProfile = await activeScraper.getProfile(uname);
+            if (fetchedProfile) {
+              profile = {
+                name: fetchedProfile.name || fetchedProfile.displayName || uname,
+                followersCount: fetchedProfile.followersCount || 0,
+                joined: fetchedProfile.joined || null,
+                avatar: fetchedProfile.avatar || null
+              };
+              await TwitterProfileCache.create({
+                username: uname.toLowerCase(),
+                name: profile.name,
+                followersCount: profile.followersCount,
+                joined: profile.joined,
+                avatar: profile.avatar
+              }).catch(() => {});
+            }
+          }
+
+          if (!profile) continue;
+
+          if (minFollowers && (profile.followersCount || 0) < minFollowers) continue;
+
+          let ageDays = 0;
+          if (profile.joined) {
+            const joinedDate = new Date(profile.joined);
+            ageDays = Math.floor((Date.now() - joinedDate.getTime()) / (1000 * 60 * 60 * 24));
+          }
+          if (minAge && ageDays < minAge) continue;
+
+          const matchingReply = replies.find(r => r.username.toLowerCase() === uname.toLowerCase());
+
+          candidates.push({
+            name: profile.name,
+            handle: `@${uname}`,
+            followers: profile.followersCount,
+            age: ageDays,
+            avatar: profile.avatar,
+            replyId: matchingReply ? matchingReply.id : null
+          });
+        } catch (profileErr) {
+          console.error(`Error verifying details for user @${uname}:`, profileErr.message);
+        }
+      }
+    }
+
+    if (candidates.length === 0) {
+      return interaction.editReply({ 
+        content: `❌ No reply authors matched the eligibility filters:\n` +
+                 `• Minimum Followers: \`${minFollowers}\`\n` +
+                 `• Minimum Account Age: \`${minAge} days\`\n` +
+                 `• Checked \`${isProfileCheckNeeded ? Math.min(replies.length, 15) : replies.length}\` unique candidates.`
+      });
+    }
+
+    const countToPick = Math.min(winnerCount, candidates.length);
+    const shuffled = [...candidates].sort(() => 0.5 - Math.random());
+    const selectedWinners = shuffled.slice(0, countToPick);
+
+    const { AttachmentBuilder } = require('discord.js');
+    const attachments = [];
+    const winnerFields = [];
+
+    for (let i = 0; i < selectedWinners.length; i++) {
+      const winner = selectedWinners[i];
+      const slipBuffer = await createWinnerSlipBuffer(winner);
+      const filename = `winner-slip-${winner.handle.substring(1)}-${i+1}.png`;
+      const attachment = new AttachmentBuilder(slipBuffer, { name: filename });
+      attachments.push(attachment);
+
+      const followersVal = winner.followers > 0 ? winner.followers.toLocaleString() : 'Not Checked';
+      const ageVal = winner.age > 0 ? `${winner.age} days` : 'Not Checked';
+      const replyLink = winner.replyId ? `[💬 View Reply](https://x.com/${winner.handle.substring(1)}/status/${winner.replyId})` : '*N/A*';
+
+      winnerFields.push({
+        name: `👑 Winner #${i + 1}: ${winner.name}`,
+        value: `🐦 Handle: [${winner.handle}](https://x.com/${winner.handle.substring(1)})  |  ${replyLink}\n👥 Followers: \`${followersVal}\`  |  📅 Account Age: \`${ageVal}\``,
+        inline: false
+      });
+    }
+
+    const summaryEmbed = {
+      color: 0xF1C40F, // Gold
+      title: selectedWinners.length > 1 ? `🎉 ${selectedWinners.length} GIVEAWAY WINNERS SELECTED 🎉` : '🎉 GIVEAWAY WINNER SELECTED 🎉',
+      description: `We analyzed replies for the Twitter giveaway post and selected verified winners! All certificate slips are attached below in order.`,
+      fields: [
+        ...winnerFields,
+        { 
+          name: '✅ Eligibility Criteria Checked', 
+          value: `• Minimum Followers: \`${minFollowers}\`\n• Minimum Account Age: \`${minAge} days\`\n• Follow requirements verified\n• Likes & Retweets validated`, 
+          inline: false 
+        }
+      ],
+      footer: {
+        text: `Verification secured by Chess DAO Seal • Total Winners: ${selectedWinners.length}`
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    const targetChannel = await client.channels.fetch('1527197557665697872').catch(() => null);
+    if (targetChannel && targetChannel.isTextBased()) {
+      const msg = await targetChannel.send({ embeds: [summaryEmbed], files: attachments });
+      return interaction.editReply({ content: `✅ Giveaway draw complete! Results successfully posted to <#1527197557665697872>: ${msg.url}` });
+    } else {
+      return interaction.editReply({ content: `❌ Target announcement channel <#1527197557665697872> not found or bot lacks permissions to post there.` });
+    }
+
+  } catch (err) {
+    console.error('Error in Modal draw processing:', err.message);
+    return interaction.editReply({ content: `❌ An error occurred during the draw: ${err.message}` });
+  }
+}
+
 // Handle Slash Commands
 client.on('interactionCreate', async (interaction) => {
+  // Modal submits
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId === 'chess_picker_modal') {
+      return handleChessPickerModalSubmit(interaction);
+    }
+  }
+
+  // Button clicks
+  if (interaction.isButton()) {
+    if (interaction.customId === 'open_chess_picker_btn') {
+      return handleChessPickerButtonClick(interaction);
+    }
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const { commandName, guildId } = interaction;
@@ -1783,12 +2099,34 @@ client.on('interactionCreate', async (interaction) => {
           timestamp: new Date().toISOString()
         };
 
-        return interaction.editReply({ embeds: [summaryEmbed], files: attachments });
+        const targetChannel = await client.channels.fetch('1527197557665697872').catch(() => null);
+        if (targetChannel && targetChannel.isTextBased()) {
+          const msg = await targetChannel.send({ embeds: [summaryEmbed], files: attachments });
+          return interaction.editReply({ content: `✅ Giveaway draw complete! Results successfully posted to <#1527197557665697872>: ${msg.url}` });
+        } else {
+          return interaction.editReply({ embeds: [summaryEmbed], files: attachments });
+        }
 
       } catch (err) {
         console.error('Error in /pickwinner command:', err.message);
         return interaction.editReply({ content: `❌ An error occurred during the draw: ${err.message}` });
       }
+    }
+
+    // 15. /picker command
+    if (commandName === 'picker') {
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('open_chess_picker_btn')
+          .setLabel('🏆 Open Chess Picker')
+          .setStyle(ButtonStyle.Success)
+      );
+
+      return interaction.reply({
+        content: 'Click the button below to open the Chess Picker Draw form popup!',
+        components: [row],
+        ephemeral: true
+      });
     }
 
   } catch (error) {

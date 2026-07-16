@@ -200,6 +200,10 @@ const commands = [
     ),
 
   new SlashCommandBuilder()
+    .setName('picker')
+    .setDescription('Open the interactive Chess Picker popup to draw winners'),
+
+  new SlashCommandBuilder()
     .setName('help')
     .setDescription('Show the comprehensive help guide for the Chess Hunter bot')
 ].map(command => command.toJSON());
