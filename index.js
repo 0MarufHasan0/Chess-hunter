@@ -2155,18 +2155,18 @@ client.once('ready', async () => {
 
     // Initialize or update default rules for the user's guild
     try {
-      const channel1 = await client.channels.fetch('1527192472617484308');
+      const channel1 = await client.channels.fetch('1525047487318982696');
       if (channel1 && channel1.guild) {
         const guildId = channel1.guild.id;
         let configDoc = await GuildConfig.findOne({ guildId });
         if (!configDoc) {
           configDoc = new GuildConfig({ guildId });
         }
-        configDoc.channelId = '1527192472617484308';
+        configDoc.channelId = '1525047487318982696';
 
         const defaultRules = [
           {
-            channelId: '1527192472617484308',
+            channelId: '1525047487318982696',
             name: 'robinhood-early',
             authorKeywords: ['robinhood', 'robin', 'robi'],
             includeKeywords: ['early find', 'alpha', 'early alpha', 'interesting find', 'new alpha', 'free mint find', 'early nft find', 'found early'],
@@ -2174,7 +2174,7 @@ client.once('ready', async () => {
             isGiveaway: false
           },
           {
-            channelId: '1527192472617484308',
+            channelId: '1525047622438621286',
             name: 'robinhood-giveaway',
             authorKeywords: ['robinhood', 'robin', 'robi'],
             includeKeywords: ['giveaway', 'give away', 'wl', 'whitelist', 'mint', 'airdrop', 'raffle', 'free mint', 'gtd', 'fcfs', 'follow', 'drop address', 'drop wallet', 'drop your address', 'rt', 'retweet'],
@@ -2182,7 +2182,7 @@ client.once('ready', async () => {
             isGiveaway: true
           },
           {
-            channelId: '1527192472617484308',
+            channelId: '1525047727442890834',
             name: 'sol-nft',
             authorKeywords: [],
             includeKeywords: ['early find', 'alpha', 'early alpha', 'interesting find', 'new alpha', 'free mint find', 'early nft find', 'found early'],
