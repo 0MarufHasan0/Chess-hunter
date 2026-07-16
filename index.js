@@ -1243,47 +1243,53 @@ async function handleChessPickerModalSubmit(interaction) {
     }
 
     console.log(`[Modal Pickwinner] Fetching tweet ID: ${tweetId}...`);
-    const timelineUrl = `https://x.com/i/api/graphql/DBy7OJfsIS-0o-X906vE9w/TweetDetail?variables=${encodeURIComponent(JSON.stringify({
+    
+    const baseUrl = 'https://twitter.com/i/api/graphql/xOhkmRac04YFZmOzU9PJHg/TweetDetail';
+    const variables = {
       focalTweetId: tweetId,
       with_rux_injections: false,
       includePromotedContent: true,
       withCommunity: true,
-      withQuickPromoteEligibilityDoubleWrite: true,
+      withQuickPromoteEligibilityTweetFields: true,
       withBirdwatchNotes: true,
-      withVoice: true
-    }))}&features=${encodeURIComponent(JSON.stringify({
-      rweb_tipjar_consumption_enabled: true,
+      withVoice: true,
+      withV2Timeline: true
+    };
+    const features = {
       responsive_web_graphql_exclude_directive_enabled: true,
       verified_phone_label_enabled: false,
       creator_subscriptions_tweet_preview_api_enabled: true,
       responsive_web_graphql_timeline_navigation_enabled: true,
       responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
-      communities_web_enable_dependency_under_page_action_enabled: true,
+      tweetypie_unmention_optimization_enabled: true,
+      responsive_web_edit_tweet_api_enabled: true,
+      graphql_is_translatable_rweb_tweet_is_translatable_enabled: true,
+      view_counts_everywhere_api_enabled: true,
+      longform_notetweets_consumption_enabled: true,
+      responsive_web_twitter_article_tweet_consumption_enabled: false,
       tweet_awards_web_tipping_enabled: false,
-      creator_subscriptions_quote_tweet_preview_enabled: false,
       freedom_of_speech_not_reach_fetch_enabled: true,
       standardized_nudges_misinfo: true,
       tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true,
-      responsive_web_enhance_cards_and_videos: true,
-      explicit_content_filtering_functions_enabled: true,
-      view_counts_everywhere_api_enabled: true,
-      longform_notetweets_consumption_enabled: true,
-      responsive_web_twitter_article_tweet_consumption_enabled: true,
-      tweet_results_html_byg_outcome_ad_eligible_false: true,
-      translate_web_moderate_email_content_enabled: true,
-      unicode_raw_emojis_enabled: true,
-      view_counts_public_visibility_enabled: true
-    }))}`;
+      longform_notetweets_rich_text_read_enabled: true,
+      longform_notetweets_inline_media_enabled: true,
+      responsive_web_media_download_video_enabled: false,
+      responsive_web_enhance_cards_enabled: false
+    };
+    const fieldToggles = {
+      withArticleRichContentState: false
+    };
 
-    const headers = activeScraper.getSearchHeaders
-      ? activeScraper.getSearchHeaders()
-      : {
-          'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        };
+    const params = new URLSearchParams();
+    params.set('variables', JSON.stringify(variables));
+    params.set('features', JSON.stringify(features));
+    params.set('fieldToggles', JSON.stringify(fieldToggles));
 
-    const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-    const response = await fetch(timelineUrl, {
+    const requestUrl = `${baseUrl}?${params.toString()}`;
+    const headers = new Headers();
+    await activeScraper.auth.installTo(headers, requestUrl);
+
+    const response = await activeScraper.auth.fetch(requestUrl, {
       method: 'GET',
       headers,
       credentials: 'include'
