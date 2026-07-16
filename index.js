@@ -1742,10 +1742,10 @@ client.on('interactionCreate', async (interaction) => {
         const shuffled = [...candidates].sort(() => 0.5 - Math.random());
         const selectedWinners = shuffled.slice(0, countToPick);
 
-        // 5. Generate slip buffers and embeds
+        // 5. Generate slip buffers and summary embed
         const { AttachmentBuilder } = require('discord.js');
         const attachments = [];
-        const responseEmbeds = [];
+        const winnerFields = [];
 
         for (let i = 0; i < selectedWinners.length; i++) {
           const winner = selectedWinners[i];
@@ -1758,33 +1758,32 @@ client.on('interactionCreate', async (interaction) => {
           const ageVal = winner.age > 0 ? `${winner.age} days` : 'Not Checked';
           const replyLink = winner.replyId ? `[💬 View Reply](https://x.com/${winner.handle.substring(1)}/status/${winner.replyId})` : '*N/A*';
 
-          const responseEmbed = {
-            color: 0xF1C40F, // Gold
-            title: selectedWinners.length > 1 ? `🎉 WINNER #${i + 1} SELECTED: ${winner.name} 🎉` : '🎉 GIVEAWAY WINNER SELECTED 🎉',
-            description: selectedWinners.length > 1 
-              ? `Selected winner #${i + 1} of ${selectedWinners.length} for the Twitter giveaway!`
-              : `We analyzed replies for the Twitter giveaway post and selected a verified winner!`,
-            fields: [
-              { name: '👑 Winner Name', value: winner.name, inline: true },
-              { name: '🐦 X Handle', value: `[${winner.handle}](https://x.com/${winner.handle.substring(1)})`, inline: true },
-              { name: '💬 Reply Link', value: replyLink, inline: true },
-              { name: '👥 Followers', value: followersVal, inline: true },
-              { name: '📅 Account Age', value: ageVal, inline: true },
-              { name: '✅ Requirements Checked', value: `• Followers >= ${minFollowers}\n• Account Age >= ${minAge} days\n• Follow requirements validated\n• Likes & Retweets verified`, inline: false }
-            ],
-            image: {
-              url: `attachment://${filename}`
-            },
-            footer: {
-              text: `Verification secured by Chess DAO Seal • Certificate ${i + 1}/${selectedWinners.length}`
-            },
-            timestamp: new Date().toISOString()
-          };
-
-          responseEmbeds.push(responseEmbed);
+          winnerFields.push({
+            name: `👑 Winner #${i + 1}: ${winner.name}`,
+            value: `🐦 Handle: [${winner.handle}](https://x.com/${winner.handle.substring(1)})  |  ${replyLink}\n👥 Followers: \`${followersVal}\`  |  📅 Account Age: \`${ageVal}\``,
+            inline: false
+          });
         }
 
-        return interaction.editReply({ embeds: responseEmbeds, files: attachments });
+        const summaryEmbed = {
+          color: 0xF1C40F, // Gold
+          title: selectedWinners.length > 1 ? `🎉 ${selectedWinners.length} GIVEAWAY WINNERS SELECTED 🎉` : '🎉 GIVEAWAY WINNER SELECTED 🎉',
+          description: `We analyzed replies for the Twitter giveaway post and selected verified winners! All certificate slips are attached below in order.`,
+          fields: [
+            ...winnerFields,
+            { 
+              name: '✅ Eligibility Criteria Checked', 
+              value: `• Minimum Followers: \`${minFollowers}\`\n• Minimum Account Age: \`${minAge} days\`\n• Follow requirements verified\n• Likes & Retweets validated`, 
+              inline: false 
+            }
+          ],
+          footer: {
+            text: `Verification secured by Chess DAO Seal • Total Winners: ${selectedWinners.length}`
+          },
+          timestamp: new Date().toISOString()
+        };
+
+        return interaction.editReply({ embeds: [summaryEmbed], files: attachments });
 
       } catch (err) {
         console.error('Error in /pickwinner command:', err.message);
