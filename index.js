@@ -1631,7 +1631,7 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         const winnerCountOption = interaction.options.getInteger('winner_count') || 1;
-        const winnerCount = Math.max(1, Math.min(5, winnerCountOption)); // Max 5 to avoid Discord limits
+        const winnerCount = Math.max(1, Math.min(10, winnerCountOption)); // Max 10 to avoid Discord limits
 
         // 3. Fetch candidate profiles and check qualifications
         const candidates = [];
