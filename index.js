@@ -1007,7 +1007,7 @@ async function downloadAvatarBuffer(url) {
 }
 
 // Generate Winner Slip PNG image buffer using Canvas
-async function createWinnerSlipBuffer(winner) {
+async function createWinnerSlipBuffer(winners) {
   const { createCanvas, Image } = require('canvas');
   const canvas = createCanvas(800, 450);
   const ctx = canvas.getContext('2d');
@@ -1057,71 +1057,202 @@ async function createWinnerSlipBuffer(winner) {
   ctx.font = '700 12px Arial, sans-serif';
   ctx.fillText('OFFICIAL WINNER CERTIFICATE', 50, 85);
 
-  // Glassmorphic Winner Box
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-  ctx.lineWidth = 1;
-  drawServerRoundRect(ctx, 50, 120, 480, 180, 12);
-  ctx.fill();
-  ctx.stroke();
+  // Parse winners array
+  const selectedWinners = Array.isArray(winners) ? winners : [winners];
 
-  // Try loading avatar
-  let avatarImg = null;
-  if (winner.avatar) {
-    const avatarBuf = await downloadAvatarBuffer(winner.avatar);
-    if (avatarBuf) {
-      try {
-        avatarImg = new Image();
-        avatarImg.src = avatarBuf;
-      } catch (err) {
-        console.error('Failed to parse avatar image:', err.message);
+  // Download avatars in parallel
+  const avatarImages = await Promise.all(selectedWinners.map(async (winner) => {
+    if (winner.avatar) {
+      const avatarBuf = await downloadAvatarBuffer(winner.avatar);
+      if (avatarBuf) {
+        try {
+          const img = new Image();
+          img.src = avatarBuf;
+          return img;
+        } catch (err) {
+          console.error('Failed to parse avatar image:', err.message);
+        }
       }
     }
-  }
+    return null;
+  }));
 
-  // Draw Avatar
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(110, 210, 40, 0, Math.PI * 2);
-  ctx.closePath();
-  ctx.clip();
-  if (avatarImg) {
-    ctx.drawImage(avatarImg, 70, 170, 80, 80);
-  } else {
-    // fallback representation if download fails
-    const avatarHue = Math.floor(Math.random() * 360);
-    ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
-    ctx.fillRect(70, 170, 80, 80);
+  const n = selectedWinners.length;
+
+  if (n === 1) {
+    const winner = selectedWinners[0];
+    const avatarImg = avatarImages[0];
+
+    // Single winner box
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    drawServerRoundRect(ctx, 50, 120, 480, 180, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    // Draw Avatar
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(110, 210, 40, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    if (avatarImg) {
+      ctx.drawImage(avatarImg, 70, 170, 80, 80);
+    } else {
+      const avatarHue = Math.floor(Math.random() * 360);
+      ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
+      ctx.fillRect(70, 170, 80, 80);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '800 36px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(winner.name.charAt(0), 110, 210);
+    }
+    ctx.restore();
+
+    // Gold ring around avatar
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(110, 210, 40, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Winner metadata
+    ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = '#ffffff';
-    ctx.font = '800 36px Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(winner.name.charAt(0), 110, 210);
+    ctx.font = '800 24px Arial, sans-serif';
+    ctx.fillText(winner.name, 170, 195);
+
+    ctx.fillStyle = '#00e676';
+    ctx.font = 'bold 15px Courier New, monospace';
+    ctx.fillText(winner.handle, 170, 222);
+
+    ctx.fillStyle = '#90a4ae';
+    ctx.font = '600 13px Arial, sans-serif';
+    const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
+    const ageText = winner.age > 0 ? `${winner.age} days` : '0';
+    ctx.fillText(`Followers: ${followersText}   |   Account Age: ${ageText}`, 170, 255);
+
+  } else if (n === 2) {
+    // 2 Winners Layout (Vertical Stack)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    drawServerRoundRect(ctx, 50, 110, 480, 210, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    for (let i = 0; i < 2; i++) {
+      const winner = selectedWinners[i];
+      const avatarImg = avatarImages[i];
+      const yCenter = 160 + i * 110;
+
+      // Draw Avatar
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(100, yCenter, 30, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      if (avatarImg) {
+        ctx.drawImage(avatarImg, 70, yCenter - 30, 60, 60);
+      } else {
+        const avatarHue = Math.floor(Math.random() * 360);
+        ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
+        ctx.fillRect(70, yCenter - 30, 60, 60);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '800 24px Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(winner.name.charAt(0), 100, yCenter);
+      }
+      ctx.restore();
+
+      // Gold ring around avatar
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(100, yCenter, 30, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Metadata
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '800 20px Arial, sans-serif';
+      ctx.fillText(winner.name, 150, yCenter - 8);
+
+      ctx.fillStyle = '#00e676';
+      ctx.font = 'bold 13px Courier New, monospace';
+      ctx.fillText(winner.handle, 150, yCenter + 12);
+
+      ctx.fillStyle = '#90a4ae';
+      ctx.font = '600 11px Arial, sans-serif';
+      const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
+      const ageText = winner.age > 0 ? `${winner.age} days` : '0';
+      ctx.fillText(`Followers: ${followersText}   |   Account Age: ${ageText}`, 150, yCenter + 28);
+    }
+  } else {
+    // 3 or more winners layout (Compact Vertical Stack)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    drawServerRoundRect(ctx, 50, 110, 480, 220, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    const maxWinnersToShow = Math.min(n, 4);
+    const rowHeight = 220 / maxWinnersToShow;
+
+    for (let i = 0; i < maxWinnersToShow; i++) {
+      const winner = selectedWinners[i];
+      const avatarImg = avatarImages[i];
+      const yCenter = 110 + (i * rowHeight) + (rowHeight / 2);
+      const rad = Math.min(rowHeight * 0.35, 24);
+
+      // Draw Avatar
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(95, yCenter, rad, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      if (avatarImg) {
+        ctx.drawImage(avatarImg, 95 - rad, yCenter - rad, rad * 2, rad * 2);
+      } else {
+        const avatarHue = Math.floor(Math.random() * 360);
+        ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
+        ctx.fillRect(95 - rad, yCenter - rad, rad * 2, rad * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `800 ${Math.floor(rad * 0.9)}px Arial, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(winner.name.charAt(0), 95, yCenter);
+      }
+      ctx.restore();
+
+      // Gold ring around avatar
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(95, yCenter, rad, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Metadata (Side by side for compact layout)
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '800 15px Arial, sans-serif';
+      ctx.fillText(winner.name, 140, yCenter - 8);
+
+      ctx.fillStyle = '#00e676';
+      ctx.font = 'bold 12px Courier New, monospace';
+      ctx.fillText(winner.handle, 140, yCenter + 8);
+
+      ctx.fillStyle = '#90a4ae';
+      ctx.font = '600 11px Arial, sans-serif';
+      const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
+      const ageText = winner.age > 0 ? `${winner.age} days` : '0';
+      ctx.fillText(`F: ${followersText} | Age: ${ageText}`, 320, yCenter);
+    }
   }
-  ctx.restore();
-
-  // Gold ring around avatar
-  ctx.strokeStyle = '#ffd700';
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.arc(110, 210, 40, 0, Math.PI * 2);
-  ctx.stroke();
-
-  // Winner metadata
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '800 24px Arial, sans-serif';
-  ctx.fillText(winner.name, 170, 195);
-
-  ctx.fillStyle = '#00e676';
-  ctx.font = 'bold 15px Courier New, monospace';
-  ctx.fillText(winner.handle, 170, 222);
-
-  ctx.fillStyle = '#90a4ae';
-  ctx.font = '600 13px Arial, sans-serif';
-  const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : 'Not Checked';
-  const ageText = winner.age > 0 ? `${winner.age} days` : 'Not Checked';
-  ctx.fillText(`Followers: ${followersText}   |   Account Age: ${ageText}`, 170, 255);
 
   // Bottom verification details
   const serialNo = `CH-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -1483,15 +1614,15 @@ async function handleChessPickerModalSubmit(interaction) {
     const attachments = [];
     const winnerFields = [];
 
+    // Generate a single consolidated certificate card for all winners
+    const slipBuffer = await createWinnerSlipBuffer(selectedWinners);
+    const attachment = new AttachmentBuilder(slipBuffer, { name: 'winners-certificate.png' });
+    attachments.push(attachment);
+
     for (let i = 0; i < selectedWinners.length; i++) {
       const winner = selectedWinners[i];
-      const slipBuffer = await createWinnerSlipBuffer(winner);
-      const filename = `winner-slip-${winner.handle.substring(1)}-${i+1}.png`;
-      const attachment = new AttachmentBuilder(slipBuffer, { name: filename });
-      attachments.push(attachment);
-
-      const followersVal = winner.followers > 0 ? winner.followers.toLocaleString() : 'Not Checked';
-      const ageVal = winner.age > 0 ? `${winner.age} days` : 'Not Checked';
+      const followersVal = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
+      const ageVal = winner.age > 0 ? `${winner.age} days` : '0';
       const replyLink = winner.replyId ? `[💬 View Reply](https://x.com/${winner.handle.substring(1)}/status/${winner.replyId})` : '*N/A*';
 
       winnerFields.push({
@@ -2179,15 +2310,15 @@ client.on('interactionCreate', async (interaction) => {
         const attachments = [];
         const winnerFields = [];
 
+        // Generate a single consolidated certificate card for all winners
+        const slipBuffer = await createWinnerSlipBuffer(selectedWinners);
+        const attachment = new AttachmentBuilder(slipBuffer, { name: 'winners-certificate.png' });
+        attachments.push(attachment);
+
         for (let i = 0; i < selectedWinners.length; i++) {
           const winner = selectedWinners[i];
-          const slipBuffer = await createWinnerSlipBuffer(winner);
-          const filename = `winner-slip-${winner.handle.substring(1)}-${i+1}.png`;
-          const attachment = new AttachmentBuilder(slipBuffer, { name: filename });
-          attachments.push(attachment);
-
-          const followersVal = winner.followers > 0 ? winner.followers.toLocaleString() : 'Not Checked';
-          const ageVal = winner.age > 0 ? `${winner.age} days` : 'Not Checked';
+          const followersVal = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
+          const ageVal = winner.age > 0 ? `${winner.age} days` : '0';
           const replyLink = winner.replyId ? `[💬 View Reply](https://x.com/${winner.handle.substring(1)}/status/${winner.replyId})` : '*N/A*';
 
           winnerFields.push({
