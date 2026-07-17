@@ -1192,7 +1192,7 @@ async function createWinnerSlipBuffer(winners) {
       ctx.fillText(`Followers: ${followersText}   |   Account Age: ${ageText}`, 150, yCenter + 28);
     }
   } else {
-    // 3 or more winners layout (Compact Vertical Stack)
+    // 3 or more winners layout (Dynamic 1 or 2 Column Stack)
     ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
     ctx.lineWidth = 1;
@@ -1200,57 +1200,128 @@ async function createWinnerSlipBuffer(winners) {
     ctx.fill();
     ctx.stroke();
 
-    const maxWinnersToShow = Math.min(n, 4);
-    const rowHeight = 220 / maxWinnersToShow;
+    if (n <= 4) {
+      // 1-column layout for 3 or 4 winners
+      const rowHeight = 220 / n;
+      for (let i = 0; i < n; i++) {
+        const winner = selectedWinners[i];
+        const avatarImg = avatarImages[i];
+        const yCenter = 110 + (i * rowHeight) + (rowHeight / 2);
+        const rad = Math.min(rowHeight * 0.35, 24);
 
-    for (let i = 0; i < maxWinnersToShow; i++) {
-      const winner = selectedWinners[i];
-      const avatarImg = avatarImages[i];
-      const yCenter = 110 + (i * rowHeight) + (rowHeight / 2);
-      const rad = Math.min(rowHeight * 0.35, 24);
+        // Draw Avatar
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(95, yCenter, rad, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        if (avatarImg) {
+          ctx.drawImage(avatarImg, 95 - rad, yCenter - rad, rad * 2, rad * 2);
+        } else {
+          const avatarHue = Math.floor(Math.random() * 360);
+          ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
+          ctx.fillRect(95 - rad, yCenter - rad, rad * 2, rad * 2);
+          ctx.fillStyle = '#ffffff';
+          ctx.font = `800 ${Math.floor(rad * 0.9)}px Arial, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(winner.name.charAt(0), 95, yCenter);
+        }
+        ctx.restore();
 
-      // Draw Avatar
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(95, yCenter, rad, 0, Math.PI * 2);
-      ctx.closePath();
-      ctx.clip();
-      if (avatarImg) {
-        ctx.drawImage(avatarImg, 95 - rad, yCenter - rad, rad * 2, rad * 2);
-      } else {
-        const avatarHue = Math.floor(Math.random() * 360);
-        ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
-        ctx.fillRect(95 - rad, yCenter - rad, rad * 2, rad * 2);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `800 ${Math.floor(rad * 0.9)}px Arial, sans-serif`;
-        ctx.textAlign = 'center';
+        // Gold ring around avatar
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(95, yCenter, rad, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Metadata
+        ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText(winner.name.charAt(0), 95, yCenter);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '800 15px Arial, sans-serif';
+        ctx.fillText(winner.name, 140, yCenter - 8);
+
+        ctx.fillStyle = '#00e676';
+        ctx.font = 'bold 12px Courier New, monospace';
+        ctx.fillText(winner.handle, 140, yCenter + 8);
+
+        ctx.fillStyle = '#90a4ae';
+        ctx.font = '600 11px Arial, sans-serif';
+        const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
+        const ageText = winner.age > 0 ? `${winner.age} days` : '0';
+        ctx.fillText(`F: ${followersText} | Age: ${ageText}`, 320, yCenter);
       }
-      ctx.restore();
+    } else {
+      // 2-column layout for 5 to 10 winners
+      const half = Math.ceil(n / 2);
+      const rowHeight = 220 / half;
 
-      // Gold ring around avatar
-      ctx.strokeStyle = '#ffd700';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(95, yCenter, rad, 0, Math.PI * 2);
-      ctx.stroke();
+      for (let i = 0; i < n; i++) {
+        const winner = selectedWinners[i];
+        const avatarImg = avatarImages[i];
+        const col = Math.floor(i / half);
+        const row = i % half;
+        const xStart = 55 + col * 240;
+        const yCenter = 110 + (row * rowHeight) + (rowHeight / 2);
+        const rad = Math.min(rowHeight * 0.35, 15);
+        const xAvatar = xStart + rad;
 
-      // Metadata (Side by side for compact layout)
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '800 15px Arial, sans-serif';
-      ctx.fillText(winner.name, 140, yCenter - 8);
+        // Draw Avatar
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(xAvatar, yCenter, rad, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        if (avatarImg) {
+          ctx.drawImage(avatarImg, xAvatar - rad, yCenter - rad, rad * 2, rad * 2);
+        } else {
+          const avatarHue = Math.floor(Math.random() * 360);
+          ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
+          ctx.fillRect(xAvatar - rad, yCenter - rad, rad * 2, rad * 2);
+          ctx.fillStyle = '#ffffff';
+          ctx.font = `800 ${Math.floor(rad * 0.9)}px Arial, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(winner.name.charAt(0), xAvatar, yCenter);
+        }
+        ctx.restore();
 
-      ctx.fillStyle = '#00e676';
-      ctx.font = 'bold 12px Courier New, monospace';
-      ctx.fillText(winner.handle, 140, yCenter + 8);
+        // Gold ring around avatar
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(xAvatar, yCenter, rad, 0, Math.PI * 2);
+        ctx.stroke();
 
-      ctx.fillStyle = '#90a4ae';
-      ctx.font = '600 11px Arial, sans-serif';
-      const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
-      const ageText = winner.age > 0 ? `${winner.age} days` : '0';
-      ctx.fillText(`F: ${followersText} | Age: ${ageText}`, 320, yCenter);
+        // Metadata
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '800 11px Arial, sans-serif';
+        // Truncate name if too long
+        let winnerName = winner.name;
+        if (winnerName.length > 12) {
+          winnerName = winnerName.substring(0, 10) + '..';
+        }
+        ctx.fillText(winnerName, xStart + rad * 2 + 8, yCenter - 6);
+
+        ctx.fillStyle = '#00e676';
+        ctx.font = 'bold 9px Courier New, monospace';
+        let winnerHandle = winner.handle;
+        if (winnerHandle.length > 14) {
+          winnerHandle = winnerHandle.substring(0, 12) + '..';
+        }
+        ctx.fillText(winnerHandle, xStart + rad * 2 + 8, yCenter + 5);
+
+        ctx.fillStyle = '#90a4ae';
+        ctx.font = '600 8px Arial, sans-serif';
+        const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
+        const ageText = winner.age > 0 ? `${winner.age}d` : '0d';
+        ctx.fillText(`F: ${followersText} | A: ${ageText}`, xStart + rad * 2 + 8, yCenter + 15);
+      }
     }
   }
 
