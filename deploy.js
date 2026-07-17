@@ -116,8 +116,6 @@ function startInstall() {
     npm install --omit=dev
     
     echo "Registering process with PM2..."
-    pm2 stop twitter-tracker || true
-    pm2 delete twitter-tracker || true
     pm2 stop chess-picker-bot || true
     pm2 delete chess-picker-bot || true
     pm2 start index.js --name "chess-picker-bot"
