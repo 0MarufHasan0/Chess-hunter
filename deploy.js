@@ -11,7 +11,7 @@ const config = {
   password: 'n6r5Xp15ONfP3RSyP8wk'
 };
 
-const remoteDir = '/root/discord-twitter-tracker-bot';
+const remoteDir = '/root/chess-picker-bot';
 
 const filesToUpload = [
   'package.json',
@@ -118,7 +118,9 @@ function startInstall() {
     echo "Registering process with PM2..."
     pm2 stop twitter-tracker || true
     pm2 delete twitter-tracker || true
-    pm2 start index.js --name "twitter-tracker"
+    pm2 stop chess-picker-bot || true
+    pm2 delete chess-picker-bot || true
+    pm2 start index.js --name "chess-picker-bot"
     pm2 save
     
     echo "=== PM2 Status ==="
