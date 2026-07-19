@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/api/(.*)", "destination": "http://89.144.8.148:3005/api/$1" },
     { "source": "/", "destination": "/picker/index.html" },
     { "source": "/(.*)", "destination": "/picker/$1" }
   ]

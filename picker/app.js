@@ -292,8 +292,11 @@ async function startWinnerDraw() {
   } else {
     // Try fetching REAL candidates from backend Twitter GraphQL scraper API
     try {
-      const apiRes = await fetch(`/api/fetch-tweet-replies?url=${encodeURIComponent(postLink)}`);
-      if (apiRes.ok) {
+      let apiRes = await fetch(`/api/fetch-tweet-replies?url=${encodeURIComponent(postLink)}`).catch(() => null);
+      if (!apiRes || !apiRes.ok) {
+        apiRes = await fetch(`http://89.144.8.148:3005/api/fetch-tweet-replies?url=${encodeURIComponent(postLink)}`).catch(() => null);
+      }
+      if (apiRes && apiRes.ok) {
         const data = await apiRes.json();
         if (data.success && Array.isArray(data.candidates) && data.candidates.length > 0) {
           console.log(`✨ Successfully fetched ${data.candidates.length} REAL candidates directly from X (Twitter)!`);
@@ -301,7 +304,7 @@ async function startWinnerDraw() {
         }
       }
     } catch (err) {
-      console.warn("Backend X API offline or standalone mode, using mock candidate pool:", err.message);
+      console.warn("Backend X API fetch error:", err.message);
     }
 
     if (candidates.length === 0) {
