@@ -642,7 +642,7 @@ async function generateWinnerSlipCanvas(winners, customSerial = null, customHash
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = '#ffffff';
   ctx.font = '800 24px Outfit, sans-serif';
-  ctx.fillText('♞  CHESS HUNTER PICKER', 50, 58);
+  ctx.fillText('♞  CHESS PICKER', 50, 58);
 
   ctx.fillStyle = '#00f2fe';
   ctx.font = '700 12px Outfit, sans-serif';

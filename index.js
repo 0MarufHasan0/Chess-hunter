@@ -1308,7 +1308,7 @@ async function createWinnerSlipBuffer(winners) {
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = '#ffffff';
   ctx.font = '800 24px Arial, sans-serif';
-  ctx.fillText('♞  CHESS HUNTER GIVEAWAY', 50, 58);
+  ctx.fillText('♞  CHESS PICKER', 50, 58);
 
   ctx.fillStyle = '#00f2fe';
   ctx.font = '700 12px Arial, sans-serif';
