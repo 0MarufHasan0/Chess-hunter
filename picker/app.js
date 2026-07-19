@@ -305,7 +305,8 @@ async function startWinnerDraw() {
     }
 
     if (candidates.length === 0) {
-      candidates = [...mockCandidatesPool];
+      alert("❌ No public reply candidates found for this X (Twitter) post URL. Please make sure the URL is valid and the post has replies.");
+      return;
     }
   }
 
@@ -495,7 +496,7 @@ async function showWinners(winners) {
     currentWinners.forEach((winner, idx) => {
       const cleanHandle = winner.handle.startsWith('@') ? winner.handle.substring(1) : winner.handle;
       const serial = winner.certSerial;
-      const wallet = winner.wallet || `0x${Array.from({length: 8}, () => Math.floor(Math.random()*16).toString(16)).join('')}...${Array.from({length: 4}, () => Math.floor(Math.random()*16).toString(16)).join('')}`;
+      const wallet = winner.wallet || 'No Wallet Found';
       const replyLink = winner.replyUrl || `https://x.com/${cleanHandle}`;
 
       const tr = document.createElement('tr');
@@ -831,7 +832,7 @@ function exportWinnersToCSV() {
     const cleanHandle = w.handle.startsWith('@') ? w.handle.substring(1) : w.handle;
     const profileUrl = `https://x.com/${cleanHandle}`;
     const replyUrl = w.replyUrl || profileUrl;
-    const wallet = w.wallet || '0x' + Array.from({length: 40}, () => Math.floor(Math.random()*16).toString(16)).join('');
+    const wallet = w.wallet || 'No Wallet Found';
     const serial = w.certSerial || `CH-${Math.floor(100000 + Math.random() * 900000)}`;
 
     const row = [
@@ -877,7 +878,7 @@ function copyWinnersForGoogleSheet() {
     const cleanHandle = w.handle.startsWith('@') ? w.handle.substring(1) : w.handle;
     const profileUrl = `https://x.com/${cleanHandle}`;
     const replyUrl = w.replyUrl || profileUrl;
-    const wallet = w.wallet || '0x' + Array.from({length: 40}, () => Math.floor(Math.random()*16).toString(16)).join('');
+    const wallet = w.wallet || 'No Wallet Found';
     const serial = w.certSerial || `CH-${Math.floor(100000 + Math.random() * 900000)}`;
 
     tsv += `${idx + 1}\t${w.name}\t${w.handle}\t${profileUrl}\t${replyUrl}\t${w.followers || 0}\t${w.age || 0}\t${wallet}\t${serial}\t${drawDate}\t${postLink}\n`;

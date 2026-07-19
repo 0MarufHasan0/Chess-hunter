@@ -1089,7 +1089,7 @@ async function fetchRealTweetCandidates(postUrl) {
     if (seenUsers.has(unameLower)) continue;
     seenUsers.add(unameLower);
 
-    let ageDays = 30;
+    let ageDays = 0;
     if (r.joined) {
       const joinDate = new Date(r.joined);
       if (!isNaN(joinDate.getTime())) {
@@ -1097,15 +1097,20 @@ async function fetchRealTweetCandidates(postUrl) {
       }
     }
 
+    const replyUrl = `https://x.com/${r.username}/status/${r.id}`;
+    const walletAddr = extractWalletAddress(r.text);
+
     candidates.push({
       name: r.name || r.username,
       handle: `@${r.username}`,
-      followers: r.followersCount || 100,
+      followers: typeof r.followersCount === 'number' ? r.followersCount : 0,
       age: ageDays,
       likes: true,
       rts: true,
       avatar: r.avatar || `https://unavatar.io/twitter/${r.username}`,
-      wallet: extractWalletAddress(r.text)
+      wallet: walletAddr,
+      replyId: r.id,
+      replyUrl: replyUrl
     });
   }
 
