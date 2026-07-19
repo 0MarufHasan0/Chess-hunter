@@ -1452,56 +1452,63 @@ async function createWinnerSlipBuffer(winners) {
 
 // Handle Modal submissions first
 async function handleChessPickerButtonClick(interaction) {
-  const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+  try {
+    const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 
-  const modal = new ModalBuilder()
-    .setCustomId('chess_picker_modal')
-    .setTitle('Chess Picker Draw Panel');
+    const modal = new ModalBuilder()
+      .setCustomId('chess_picker_modal')
+      .setTitle('Chess Picker Draw Panel');
 
-  const postUrlInput = new TextInputBuilder()
-    .setCustomId('modal_post_url')
-    .setLabel('Twitter Post URL')
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder('https://x.com/username/status/1234567890')
-    .setRequired(true);
+    const postUrlInput = new TextInputBuilder()
+      .setCustomId('modal_post_url')
+      .setLabel('Twitter Post URL')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('https://x.com/username/status/1234567890')
+      .setRequired(true);
 
-  const winnerCountInput = new TextInputBuilder()
-    .setCustomId('modal_winner_count')
-    .setLabel('Winner Count (1-20)')
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder('1')
-    .setRequired(false);
+    const winnerCountInput = new TextInputBuilder()
+      .setCustomId('modal_winner_count')
+      .setLabel('Winner Count (1-20)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('1')
+      .setRequired(false);
 
-  const minFollowersInput = new TextInputBuilder()
-    .setCustomId('modal_min_followers')
-    .setLabel('Min Followers (Optional)')
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder('0')
-    .setRequired(false);
+    const minFollowersInput = new TextInputBuilder()
+      .setCustomId('modal_min_followers')
+      .setLabel('Min Followers (Optional)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('0')
+      .setRequired(false);
 
-  const minAgeInput = new TextInputBuilder()
-    .setCustomId('modal_min_age')
-    .setLabel('Min Account Age in Days (Optional)')
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder('0')
-    .setRequired(false);
+    const minAgeInput = new TextInputBuilder()
+      .setCustomId('modal_min_age')
+      .setLabel('Min Account Age in Days (Optional)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('0')
+      .setRequired(false);
 
-  const allowRepeatInput = new TextInputBuilder()
-    .setCustomId('modal_allow_repeat')
-    .setLabel('Allow Same Person Repeat Winners? (true/false)')
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder('false (default: false, set true to allow repeat)')
-    .setRequired(false);
+    const allowRepeatInput = new TextInputBuilder()
+      .setCustomId('modal_allow_repeat')
+      .setLabel('Allow Repeat Winners? (true/false)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('false (set true to allow repeat winners)')
+      .setRequired(false);
 
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(postUrlInput),
-    new ActionRowBuilder().addComponents(winnerCountInput),
-    new ActionRowBuilder().addComponents(minFollowersInput),
-    new ActionRowBuilder().addComponents(minAgeInput),
-    new ActionRowBuilder().addComponents(allowRepeatInput)
-  );
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(postUrlInput),
+      new ActionRowBuilder().addComponents(winnerCountInput),
+      new ActionRowBuilder().addComponents(minFollowersInput),
+      new ActionRowBuilder().addComponents(minAgeInput),
+      new ActionRowBuilder().addComponents(allowRepeatInput)
+    );
 
-  await interaction.showModal(modal);
+    await interaction.showModal(modal);
+  } catch (err) {
+    console.error('Error showing Chess Picker modal:', err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: `❌ Could not open modal popup: ${err.message}`, ephemeral: true }).catch(() => {});
+    }
+  }
 }
 
 // Global modal submit handler
