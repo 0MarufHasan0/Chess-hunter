@@ -195,7 +195,7 @@ const commands = [
     )
     .addIntegerOption(option =>
       option.setName('winner_count')
-        .setDescription('Number of winners to pick (default: 1, max: 20)')
+        .setDescription('Number of winners to pick (default: 1, max: 50)')
         .setRequired(false)
     )
     .addBooleanOption(option =>

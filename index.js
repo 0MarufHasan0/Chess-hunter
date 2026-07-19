@@ -1076,15 +1076,67 @@ function generateWinnersCsvBuffer(winners) {
   return Buffer.from(csvContent, 'utf-8');
 }
 
-// Generate Winner Slip PNG image buffer using Canvas
+// Text auto-scaling helper for Canvas to fit names/handles cleanly
+function fitServerCanvasText(ctx, text, maxWidth, initialFontSize, fontFace = 'Arial, sans-serif', minFontSize = 9.5) {
+  let fontSize = initialFontSize;
+  ctx.font = `800 ${fontSize}px ${fontFace}`;
+  while (ctx.measureText(text).width > maxWidth && fontSize > minFontSize) {
+    fontSize -= 0.5;
+    ctx.font = `800 ${fontSize}px ${fontFace}`;
+  }
+  if (ctx.measureText(text).width > maxWidth) {
+    let truncated = text;
+    while (truncated.length > 0 && ctx.measureText(truncated + '..').width > maxWidth) {
+      truncated = truncated.slice(0, -1);
+    }
+    return { text: truncated + '..', fontSize };
+  }
+  return { text, fontSize };
+}
+
+// Generate Winner Slip PNG image buffer using Canvas with high legibility for 1 to 50+ winners
 async function createWinnerSlipBuffer(winners) {
   const { createCanvas, Image } = require('canvas');
-  const canvas = createCanvas(800, 450);
-  const ctx = canvas.getContext('2d');
-  const width = 800;
-  const height = 450;
+  const selectedWinners = Array.isArray(winners) ? winners : [winners];
+  const n = selectedWinners.length;
 
-  // Space Background
+  // Determine grid dimensions dynamically for crystal clear readability
+  let cols = 1;
+  if (n === 2) cols = 2;
+  else if (n >= 3 && n <= 6) cols = 2;
+  else if (n >= 7 && n <= 15) cols = 3;
+  else if (n >= 16 && n <= 30) cols = 4;
+  else if (n > 30) cols = 5;
+
+  const rows = Math.ceil(n / cols);
+
+  // Card dimensions & spacing
+  let cardHeight = Math.max(54, Math.min(74, Math.floor(450 / Math.max(1, rows))));
+  if (n === 1) cardHeight = 180;
+  else if (n === 2) cardHeight = 110;
+
+  const gapX = 14;
+  const gapY = 12;
+  const marginX = 45;
+  const marginYHeader = 115;
+  const marginYFooter = 85;
+
+  let width = 1200;
+  if (n === 1) width = 900;
+  else if (n <= 4) width = 1050;
+  else if (n <= 12) width = 1200;
+  else if (n <= 30) width = 1350;
+  else width = 1480;
+
+  const cardAreaWidth = width - (marginX * 2);
+  const cardWidth = Math.floor((cardAreaWidth - (cols - 1) * gapX) / cols);
+  const cardAreaHeight = rows * cardHeight + (rows - 1) * gapY;
+  const height = Math.max(480, marginYHeader + cardAreaHeight + marginYFooter);
+
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+
+  // 1. Space Background Gradient
   const grad = ctx.createLinearGradient(0, 0, width, height);
   grad.addColorStop(0, '#0c0f16');
   grad.addColorStop(0.5, '#121622');
@@ -1092,8 +1144,8 @@ async function createWinnerSlipBuffer(winners) {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, width, height);
 
-  // Ambient Grid
-  ctx.strokeStyle = 'rgba(0, 242, 254, 0.03)';
+  // 2. Ambient Grid
+  ctx.strokeStyle = 'rgba(0, 242, 254, 0.035)';
   ctx.lineWidth = 1.5;
   const gridSize = 40;
   for (let x = 0; x < width; x += gridSize) {
@@ -1109,28 +1161,61 @@ async function createWinnerSlipBuffer(winners) {
     ctx.stroke();
   }
 
-  // Borders
+  // 3. Glowing Borders
   ctx.strokeStyle = '#00f2fe';
   ctx.lineWidth = 3;
   ctx.strokeRect(15, 15, width - 30, height - 30);
 
-  ctx.strokeStyle = 'rgba(255, 215, 0, 0.2)';
+  ctx.strokeStyle = 'rgba(255, 215, 0, 0.25)';
   ctx.lineWidth = 1;
   ctx.strokeRect(25, 25, width - 50, height - 50);
 
-  // Headers
+  // 4. Headers
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = '#ffffff';
   ctx.font = '800 24px Arial, sans-serif';
-  ctx.fillText('♞  CHESS PICKER GIVEAWAY', 50, 65);
+  ctx.fillText('♞  CHESS HUNTER GIVEAWAY', 50, 58);
 
   ctx.fillStyle = '#00f2fe';
   ctx.font = '700 12px Arial, sans-serif';
-  ctx.fillText('OFFICIAL WINNER CERTIFICATE', 50, 85);
+  ctx.fillText(`OFFICIAL WINNER CERTIFICATE  •  TOTAL WINNERS: ${n}`, 50, 80);
 
-  // Parse winners array
-  const selectedWinners = Array.isArray(winners) ? winners : [winners];
+  // 5. Draw Seal / Logo in Header Area (Top Right)
+  let logoImg = null;
+  const fs = require('fs');
+  if (fs.existsSync('logo.jpg')) {
+    try {
+      const logoBuf = fs.readFileSync('logo.jpg');
+      logoImg = new Image();
+      logoImg.src = logoBuf;
+    } catch (logoErr) {
+      console.error('Failed to load logo.jpg:', logoErr.message);
+    }
+  }
 
-  // Download avatars in parallel
+  const sealCx = width - 85;
+  const sealCy = 62;
+  const sealRad = 36;
+  if (logoImg) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(sealCx, sealCy, sealRad, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(logoImg, sealCx - sealRad, sealCy - sealRad, sealRad * 2, sealRad * 2);
+    ctx.restore();
+
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(sealCx, sealCy, sealRad, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    drawServerChessDAOSeal(ctx, sealCx, sealCy);
+  }
+
+  // 6. Parallel download avatar images
   const avatarImages = await Promise.all(selectedWinners.map(async (winner) => {
     if (winner.avatar) {
       const avatarBuf = await downloadAvatarBuffer(winner.avatar);
@@ -1147,305 +1232,128 @@ async function createWinnerSlipBuffer(winners) {
     return null;
   }));
 
-  const n = selectedWinners.length;
+  // 7. Render Winner Cards Grid
+  for (let i = 0; i < n; i++) {
+    const winner = selectedWinners[i];
+    const avatarImg = avatarImages[i];
 
-  if (n === 1) {
-    const winner = selectedWinners[0];
-    const avatarImg = avatarImages[0];
+    const col = i % cols;
+    const row = Math.floor(i / cols);
 
-    // Single winner box
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    const x = marginX + col * (cardWidth + gapX);
+    const y = marginYHeader + row * (cardHeight + gapY);
+
+    // Card Glass Background
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.strokeStyle = 'rgba(0, 242, 254, 0.22)';
     ctx.lineWidth = 1;
-    drawServerRoundRect(ctx, 50, 120, 480, 180, 12);
+    drawServerRoundRect(ctx, x, y, cardWidth, cardHeight, 10);
     ctx.fill();
     ctx.stroke();
 
-    // Draw Avatar
+    // Winner Index Badge (#1, #2, etc) on card top-right
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '800 11px Arial, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`#${i + 1}`, x + cardWidth - 10, y + 8);
+
+    // Avatar calculation
+    const yCenter = y + cardHeight / 2;
+    const avatarRad = Math.min(22, Math.max(14, Math.floor(cardHeight * 0.32)));
+    const avatarX = x + 12 + avatarRad;
+
     ctx.save();
     ctx.beginPath();
-    ctx.arc(110, 210, 40, 0, Math.PI * 2);
+    ctx.arc(avatarX, yCenter, avatarRad, 0, Math.PI * 2);
     ctx.closePath();
     ctx.clip();
+
     if (avatarImg) {
-      ctx.drawImage(avatarImg, 70, 170, 80, 80);
+      ctx.drawImage(avatarImg, avatarX - avatarRad, yCenter - avatarRad, avatarRad * 2, avatarRad * 2);
     } else {
       const avatarHue = Math.floor(Math.random() * 360);
       ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
-      ctx.fillRect(70, 170, 80, 80);
+      ctx.fillRect(avatarX - avatarRad, yCenter - avatarRad, avatarRad * 2, avatarRad * 2);
       ctx.fillStyle = '#ffffff';
-      ctx.font = '800 36px Arial, sans-serif';
+      ctx.font = `800 ${Math.floor(avatarRad * 1.1)}px Arial, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(winner.name.charAt(0), 110, 210);
+      ctx.fillText(winner.name ? winner.name.charAt(0).toUpperCase() : 'W', avatarX, yCenter);
     }
     ctx.restore();
 
-    // Gold ring around avatar
+    // Avatar Gold Ring
     ctx.strokeStyle = '#ffd700';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(110, 210, 40, 0, Math.PI * 2);
+    ctx.arc(avatarX, yCenter, avatarRad, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Winner metadata
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '800 24px Arial, sans-serif';
-    ctx.fillText(winner.name, 170, 195);
+    // Metadata Text Placement
+    const textX = x + 12 + avatarRad * 2 + 10;
+    const maxTextWidth = cardWidth - (12 + avatarRad * 2 + 10) - 34; // leave space for badge
 
-    ctx.fillStyle = '#00e676';
-    ctx.font = 'bold 15px Courier New, monospace';
-    ctx.fillText(winner.handle, 170, 222);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
 
-    ctx.fillStyle = '#90a4ae';
-    ctx.font = '600 13px Arial, sans-serif';
-    const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
-    const ageText = winner.age > 0 ? `${winner.age} days` : '0';
-    ctx.fillText(`Followers: ${followersText}   |   Account Age: ${ageText}`, 170, 255);
-
-  } else if (n === 2) {
-    // 2 Winners Layout (Vertical Stack)
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.lineWidth = 1;
-    drawServerRoundRect(ctx, 50, 110, 480, 210, 12);
-    ctx.fill();
-    ctx.stroke();
-
-    for (let i = 0; i < 2; i++) {
-      const winner = selectedWinners[i];
-      const avatarImg = avatarImages[i];
-      const yCenter = 160 + i * 110;
-
-      // Draw Avatar
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(100, yCenter, 30, 0, Math.PI * 2);
-      ctx.closePath();
-      ctx.clip();
-      if (avatarImg) {
-        ctx.drawImage(avatarImg, 70, yCenter - 30, 60, 60);
-      } else {
-        const avatarHue = Math.floor(Math.random() * 360);
-        ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
-        ctx.fillRect(70, yCenter - 30, 60, 60);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '800 24px Arial, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(winner.name.charAt(0), 100, yCenter);
-      }
-      ctx.restore();
-
-      // Gold ring around avatar
-      ctx.strokeStyle = '#ffd700';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(100, yCenter, 30, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Metadata
-      ctx.textBaseline = 'alphabetic';
+    if (n <= 2) {
+      // 1 or 2 winners layout - extra room for stats
+      const { text: formattedName, fontSize: nameSize } = fitServerCanvasText(ctx, winner.name, maxTextWidth, 22, 'Arial, sans-serif', 14);
       ctx.fillStyle = '#ffffff';
-      ctx.font = '800 20px Arial, sans-serif';
-      ctx.fillText(winner.name, 150, yCenter - 8);
+      ctx.font = `800 ${nameSize}px Arial, sans-serif`;
+      ctx.fillText(formattedName, textX, yCenter - 20);
 
+      const { text: formattedHandle, fontSize: handleSize } = fitServerCanvasText(ctx, winner.handle, maxTextWidth, 14, 'Courier New, monospace', 11);
       ctx.fillStyle = '#00e676';
-      ctx.font = 'bold 13px Courier New, monospace';
-      ctx.fillText(winner.handle, 150, yCenter + 12);
+      ctx.font = `bold ${handleSize}px Courier New, monospace`;
+      ctx.fillText(formattedHandle, textX, yCenter + 5);
 
       ctx.fillStyle = '#90a4ae';
-      ctx.font = '600 11px Arial, sans-serif';
+      ctx.font = '600 12px Arial, sans-serif';
       const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
-      const ageText = winner.age > 0 ? `${winner.age} days` : '0';
-      ctx.fillText(`Followers: ${followersText}   |   Account Age: ${ageText}`, 150, yCenter + 28);
-    }
-  } else {
-    // 3 or more winners layout (Dynamic 1 or 2 Column Stack for 3 to 20 winners)
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.lineWidth = 1;
-    drawServerRoundRect(ctx, 50, 110, 480, 220, 12);
-    ctx.fill();
-    ctx.stroke();
-
-    if (n <= 4) {
-      // 1-column layout for 3 or 4 winners
-      const rowHeight = 220 / n;
-      for (let i = 0; i < n; i++) {
-        const winner = selectedWinners[i];
-        const avatarImg = avatarImages[i];
-        const yCenter = 110 + (i * rowHeight) + (rowHeight / 2);
-        const rad = Math.min(rowHeight * 0.35, 24);
-
-        // Draw Avatar
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(95, yCenter, rad, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-        if (avatarImg) {
-          ctx.drawImage(avatarImg, 95 - rad, yCenter - rad, rad * 2, rad * 2);
-        } else {
-          const avatarHue = Math.floor(Math.random() * 360);
-          ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
-          ctx.fillRect(95 - rad, yCenter - rad, rad * 2, rad * 2);
-          ctx.fillStyle = '#ffffff';
-          ctx.font = `800 ${Math.floor(rad * 0.9)}px Arial, sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(winner.name.charAt(0), 95, yCenter);
-        }
-        ctx.restore();
-
-        // Gold ring around avatar
-        ctx.strokeStyle = '#ffd700';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(95, yCenter, rad, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Metadata
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '800 15px Arial, sans-serif';
-        ctx.fillText(winner.name, 140, yCenter - 8);
-
-        ctx.fillStyle = '#00e676';
-        ctx.font = 'bold 12px Courier New, monospace';
-        ctx.fillText(winner.handle, 140, yCenter + 8);
-
-        ctx.fillStyle = '#90a4ae';
-        ctx.font = '600 11px Arial, sans-serif';
-        const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
-        const ageText = winner.age > 0 ? `${winner.age} days` : '0';
-        ctx.fillText(`F: ${followersText} | Age: ${ageText}`, 320, yCenter);
-      }
+      const ageText = winner.age > 0 ? `${winner.age}d` : '0d';
+      ctx.fillText(`Followers: ${followersText}   |   Age: ${ageText}`, textX, yCenter + 26);
     } else {
-      // 2-column layout for 5 to 20 winners
-      const half = Math.ceil(n / 2);
-      const rowHeight = 220 / half;
+      // 3 to 50+ winners layout - compact readable cards
+      const baseNameSize = Math.max(12, Math.min(15, Math.floor(cardHeight * 0.28)));
+      const baseHandleSize = Math.max(10, Math.min(12, Math.floor(cardHeight * 0.22)));
 
-      for (let i = 0; i < n; i++) {
-        const winner = selectedWinners[i];
-        const avatarImg = avatarImages[i];
-        const col = Math.floor(i / half);
-        const row = i % half;
-        const xStart = 55 + col * 240;
-        const yCenter = 110 + (row * rowHeight) + (rowHeight / 2);
-        const rad = Math.min(rowHeight * 0.33, 14);
-        const xAvatar = xStart + rad;
+      const { text: formattedName, fontSize: nameSize } = fitServerCanvasText(ctx, winner.name, maxTextWidth, baseNameSize, 'Arial, sans-serif', 10.5);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `800 ${nameSize}px Arial, sans-serif`;
 
-        // Draw Avatar
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(xAvatar, yCenter, rad, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-        if (avatarImg) {
-          ctx.drawImage(avatarImg, xAvatar - rad, yCenter - rad, rad * 2, rad * 2);
-        } else {
-          const avatarHue = Math.floor(Math.random() * 360);
-          ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
-          ctx.fillRect(xAvatar - rad, yCenter - rad, rad * 2, rad * 2);
-          ctx.fillStyle = '#ffffff';
-          ctx.font = `800 ${Math.floor(rad * 0.9)}px Arial, sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(winner.name.charAt(0), xAvatar, yCenter);
-        }
-        ctx.restore();
+      const showStats = cardHeight >= 58;
+      const nameY = showStats ? yCenter - 14 : yCenter - 8;
+      const handleY = showStats ? yCenter + 2 : yCenter + 8;
 
-        // Gold ring around avatar
-        ctx.strokeStyle = '#ffd700';
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.arc(xAvatar, yCenter, rad, 0, Math.PI * 2);
-        ctx.stroke();
+      ctx.fillText(formattedName, textX, nameY);
 
-        // Metadata with dynamic text scaling
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        
-        const nameFontSize = Math.max(7.5, Math.min(11, Math.floor(rowHeight * 0.36)));
-        const handleFontSize = Math.max(6.5, Math.min(9, Math.floor(rowHeight * 0.28)));
-        const infoFontSize = Math.max(6, Math.min(8, Math.floor(rowHeight * 0.24)));
+      const { text: formattedHandle, fontSize: handleSize } = fitServerCanvasText(ctx, winner.handle, maxTextWidth, baseHandleSize, 'Courier New, monospace', 9.5);
+      ctx.fillStyle = '#00e676';
+      ctx.font = `bold ${handleSize}px Courier New, monospace`;
+      ctx.fillText(formattedHandle, textX, handleY);
 
-        const yOffsetName = Math.max(4, rowHeight * 0.24);
-        const yOffsetHandle = Math.max(2, rowHeight * 0.08);
-        const yOffsetInfo = Math.max(4, rowHeight * 0.28);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `800 ${nameFontSize}px Arial, sans-serif`;
-        let winnerName = winner.name;
-        if (winnerName.length > 12) {
-          winnerName = winnerName.substring(0, 10) + '..';
-        }
-        ctx.fillText(winnerName, xStart + rad * 2 + 6, yCenter - yOffsetName);
-
-        ctx.fillStyle = '#00e676';
-        ctx.font = `bold ${handleFontSize}px Courier New, monospace`;
-        let winnerHandle = winner.handle;
-        if (winnerHandle.length > 14) {
-          winnerHandle = winnerHandle.substring(0, 12) + '..';
-        }
-        ctx.fillText(winnerHandle, xStart + rad * 2 + 6, yCenter + yOffsetHandle);
-
-        if (rowHeight >= 20) {
-          ctx.fillStyle = '#90a4ae';
-          ctx.font = `600 ${infoFontSize}px Arial, sans-serif`;
-          const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
-          const ageText = winner.age > 0 ? `${winner.age}d` : '0d';
-          ctx.fillText(`F: ${followersText} | A: ${ageText}`, xStart + rad * 2 + 6, yCenter + yOffsetName + yOffsetInfo);
-        }
+      if (showStats) {
+        ctx.fillStyle = '#90a4ae';
+        ctx.font = '600 10px Arial, sans-serif';
+        const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
+        const ageText = winner.age > 0 ? `${winner.age}d` : '0d';
+        ctx.fillText(`F: ${followersText} | A: ${ageText}`, textX, yCenter + 17);
       }
     }
   }
 
-  // Bottom verification details
+  // 8. Footer verification details
   const serialNo = `CH-${Math.floor(100000 + Math.random() * 900000)}`;
   const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   const hash = 'SHA256-' + Array.from({length: 16}, () => Math.floor(Math.random()*16).toString(16)).join('').toUpperCase();
 
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
   ctx.font = '600 11px Courier New, monospace';
-  ctx.fillText(`SERIAL: ${serialNo}`, 50, 345);
-  ctx.fillText(`VALIDATION HASH: ${hash}`, 50, 365);
-  ctx.fillText(`DATE: ${dateStr}`, 50, 385);
-
-  // Seal (Draw actual Chess DAO logo image from filesystem, if present)
-  let logoImg = null;
-  const fs = require('fs');
-  if (fs.existsSync('logo.jpg')) {
-    try {
-      const logoBuf = fs.readFileSync('logo.jpg');
-      logoImg = new Image();
-      logoImg.src = logoBuf;
-    } catch (logoErr) {
-      console.error('Failed to load logo.jpg:', logoErr.message);
-    }
-  }
-
-  if (logoImg) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(640, 220, 60, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.clip();
-    ctx.drawImage(logoImg, 580, 160, 120, 120);
-    ctx.restore();
-
-    // Gold ring around logo
-    ctx.strokeStyle = '#ffd700';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(640, 220, 60, 0, Math.PI * 2);
-    ctx.stroke();
-  } else {
-    drawServerChessDAOSeal(ctx, 640, 220);
-  }
+  ctx.fillText(`SERIAL: ${serialNo}   |   VALIDATION HASH: ${hash}   |   DATE: ${dateStr}`, marginX, height - 35);
 
   return canvas.toBuffer('image/png');
 }
@@ -2318,11 +2226,11 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         const winnerCountOption = interaction.options.getInteger('winner_count') || 1;
-        const winnerCount = Math.max(1, Math.min(20, winnerCountOption)); // Max 20 winners
+        const winnerCount = Math.max(1, Math.min(50, winnerCountOption)); // Max 50 winners
 
         // 3. Fetch candidate profiles and check qualifications
         const candidates = [];
-        const isProfileCheckNeeded = (minFollowers > 0 || minAge > 0);
+        const isProfileCheckNeeded = (minFollowers > 0 || minAge > 0 || !!requireFollow);
 
         if (!isProfileCheckNeeded) {
           let poolReplies = replies;
@@ -2524,7 +2432,7 @@ client.on('interactionCreate', async (interaction) => {
             ...winnerFields,
             { 
               name: '✅ Eligibility Criteria Checked', 
-              value: `• Minimum Followers: \`${minFollowers}\`\n• Minimum Account Age: \`${minAge} days\`\n• Allow Repeat Winners: \`${allowRepeat ? 'Yes (Enabled)' : 'No (Disabled)'}\`\n• Follow requirements verified\n• Likes & Retweets validated`, 
+              value: `• Must Follow: \`${requireFollow || '@ChessDAO'}\`\n• Minimum Followers: \`${minFollowers}\`\n• Minimum Account Age: \`${minAge} days\`\n• Allow Repeat Winners: \`${allowRepeat ? 'Yes (Enabled)' : 'No (Disabled)'}\`\n• Likes & Retweets validated`, 
               inline: false 
             }
           ],

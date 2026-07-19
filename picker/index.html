@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chess Hunter - Twitter Giveaway Picker & Winner Slip Generator</title>
+  <title>Chess Picker - Official Web3 Twitter Draw & Certificate Validation System</title>
   <!-- SEO Meta Tags -->
-  <meta name="description" content="Pick verified Twitter giveaway winners instantly and generate beautiful, custom download slips with Chess DAO verified seals.">
-  <meta name="keywords" content="twitter giveaway picker, chess dao, winner generator, twitter winner picker">
+  <meta name="description" content="Official Chess DAO Twitter/X Winner Picker & Certificate Verification System. Pick transparent giveaway winners and verify certificate authenticity instantly.">
+  <meta name="keywords" content="Chess Picker, Chess DAO, Twitter Giveaway Picker, Winner Certificate, Web3 Winner Selector, Certificate Validator">
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
   <!-- Stylesheet -->
   <link rel="stylesheet" href="style.css">
 </head>
@@ -25,31 +25,46 @@
     <!-- Header -->
     <header class="app-header">
       <div class="brand">
-        <span class="logo-icon">♞</span>
-        <h1>CHESS HUNTER</h1>
-        <span class="badge">Twitter Picker</span>
+        <div class="logo-wrapper">
+          <img src="logo.jpg" alt="Chess DAO" class="app-logo-img">
+        </div>
+        <div class="brand-text">
+          <h1>CHESS PICKER</h1>
+          <span class="badge">CHESS DAO OFFICIAL</span>
+        </div>
       </div>
-      <p class="subtitle">Pick verified winners from X replies & download official Chess DAO slips</p>
+      <p class="subtitle">Official Web3 Twitter/X Winner Picker & Certificate Validation Check System</p>
+      
+      <!-- Top Navigation Tabs -->
+      <nav class="nav-tabs">
+        <button id="tab-picker-btn" class="nav-tab active">
+          <span>⚡ Draw & Pick Winners</span>
+        </button>
+        <button id="tab-verify-btn" class="nav-tab">
+          <span>🛡️ Certificate Validation Check</span>
+        </button>
+      </nav>
     </header>
 
-    <main class="main-layout">
+    <!-- SECTION 1: PICKER / DRAW TAB -->
+    <main id="view-picker" class="main-layout">
       <!-- Left side: Configuration Forms -->
       <section class="config-panel glass-panel">
         <h2 class="panel-title">🏆 Picker Configuration</h2>
         
         <div class="form-group">
-          <label for="post-link">Twitter Post Link</label>
-          <input type="url" id="post-link" placeholder="https://x.com/ChessDAO/status/123456789..." required>
+          <label for="post-link">Twitter / X Post Link</label>
+          <input type="url" id="post-link" value="https://x.com/ChessDAO/status/181234567890" placeholder="https://x.com/ChessDAO/status/181234567890" required>
         </div>
 
         <div class="form-row">
           <div class="form-group">
             <label for="require-follow">Must Follow (comma separated)</label>
-            <input type="text" id="require-follow" value="@ChessDAO" placeholder="@User1, @User2">
+            <input type="text" id="require-follow" value="@ChessDAO" placeholder="@ChessDAO, @Partner">
           </div>
           <div class="form-group">
-            <label for="winner-count">Winner Count</label>
-            <input type="number" id="winner-count" min="1" max="10" value="1">
+            <label for="winner-count">Winner Count (1 - 50)</label>
+            <input type="number" id="winner-count" min="1" max="50" value="1">
           </div>
         </div>
 
@@ -81,12 +96,18 @@
         </div>
 
         <div class="form-group">
-          <label for="custom-replies">Custom / Pasted Replies (Optional)</label>
-          <textarea id="custom-replies" placeholder="Paste custom handles (one per line) or leave blank to auto-generate mock replies..."></textarea>
+          <div class="label-with-action">
+            <label for="custom-replies">Custom / Pasted Candidate Handles (Optional)</label>
+            <button id="btn-load-sample" class="btn-text-action" type="button">✨ Load Sample 20 Users</button>
+          </div>
+          <textarea id="custom-replies" placeholder="Paste custom handles (one per line)... E.g.
+@MagnusCarlsen
+@HikaruNakamura
+@FabianoCaruana"></textarea>
         </div>
 
         <button id="btn-draw" class="btn btn-primary btn-glow">
-          <span>⚡ Draw Winner ⚡</span>
+          <span>⚡ START CHESS DRAW ⚡</span>
         </button>
       </section>
 
@@ -94,9 +115,11 @@
       <section class="result-panel">
         <!-- Live Selector Slot -->
         <div id="live-selector-card" class="glass-panel centered-content">
-          <div class="chess-icon-large">♜</div>
+          <div class="chess-icon-large">
+            <img src="logo.jpg" alt="Chess DAO" class="hero-center-logo">
+          </div>
           <h2 class="section-title">Ready for Draw</h2>
-          <p class="desc-text">Fill in the configurations and click the button to start the lottery</p>
+          <p class="desc-text">Fill in the configurations on the left and click the button to draw winners!</p>
           
           <!-- Spinning Lottery Wheel Container -->
           <div id="spinner-container" class="spinner-container hidden">
@@ -115,7 +138,7 @@
           </div>
 
           <div class="winner-info-display">
-            <img id="winner-avatar" src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80" alt="Avatar">
+            <div id="winner-avatar">👑</div>
             <div class="winner-meta">
               <h3 id="winner-name">Magnus Carlsen</h3>
               <p id="winner-handle">@MagnusCarlsen</p>
@@ -127,10 +150,10 @@
           </div>
 
           <!-- Hidden Canvas for Certificate Generation -->
-          <canvas id="cert-canvas" width="800" height="450" class="hidden"></canvas>
+          <canvas id="cert-canvas" width="1200" height="600" class="hidden"></canvas>
 
           <div class="cert-preview-container">
-            <div class="preview-title">Generated Certificate Slip Preview:</div>
+            <div class="preview-title">Official Certificate Slip Preview:</div>
             <img id="cert-preview" class="cert-preview-img" alt="Certificate Preview">
           </div>
 
@@ -145,6 +168,75 @@
         </div>
       </section>
     </main>
+
+    <!-- SECTION 2: CERTIFICATE VALIDATION CHECKER TAB ("Validation check korar jonno") -->
+    <main id="view-verify" class="main-layout hidden">
+      <section class="config-panel glass-panel full-width">
+        <h2 class="panel-title">🛡️ Certificate Validation & Verification Checker</h2>
+        <p class="section-desc">Enter any Official Chess DAO Certificate Serial Number (e.g. <code>CH-849201</code>) or SHA256 Validation Hash to verify its authenticity, date, and winner breakdown.</p>
+
+        <div class="verify-search-box">
+          <div class="form-group flex-grow">
+            <label for="verify-input">Certificate Serial Number or Validation Hash</label>
+            <input type="text" id="verify-input" placeholder="Enter Serial Code (e.g. CH-849201) or SHA256 Hash..." value="CH-849201">
+          </div>
+          <button id="btn-verify-check" class="btn btn-primary btn-glow verify-btn-align">
+            <span>🔍 VERIFY NOW</span>
+          </button>
+        </div>
+
+        <div class="or-divider"><span>OR UPLOAD CERTIFICATE IMAGE</span></div>
+
+        <div class="upload-dropzone" id="upload-dropzone">
+          <div class="dropzone-icon">📁</div>
+          <div class="dropzone-text">Drag & Drop Certificate PNG here or <span class="highlight">Click to Upload</span></div>
+          <input type="file" id="cert-file-input" accept="image/png, image/jpeg" class="hidden-file-input">
+        </div>
+      </section>
+
+      <!-- Live Verification Result Panel -->
+      <section id="verify-result-panel" class="glass-panel full-width hidden">
+        <div class="verify-status-banner success">
+          <div class="status-icon">✅</div>
+          <div class="status-info">
+            <h3>CERTIFICATE AUTHENTIC & VERIFIED</h3>
+            <p>Issued by Official Chess DAO Validation Protocol</p>
+          </div>
+          <div class="status-badge-gold">SECURITY LEVEL: MAXIMUM</div>
+        </div>
+
+        <div class="verify-details-grid">
+          <div class="detail-card">
+            <span class="detail-label">Serial Number</span>
+            <span id="res-serial" class="detail-value mono">CH-849201</span>
+          </div>
+          <div class="detail-card">
+            <span class="detail-label">Validation Hash</span>
+            <span id="res-hash" class="detail-value mono">SHA256-4A9F01BC8D2E</span>
+          </div>
+          <div class="detail-card">
+            <span class="detail-label">Issue Date</span>
+            <span id="res-date" class="detail-value">July 19, 2026</span>
+          </div>
+          <div class="detail-card">
+            <span class="detail-label">Status</span>
+            <span class="detail-value green">VERIFIED ON BLOCKCHAIN</span>
+          </div>
+        </div>
+
+        <div class="verified-winners-container">
+          <h4 class="sub-title">👑 Certified Winners in this Draw:</h4>
+          <div id="verified-winners-list" class="verified-winners-grid">
+            <!-- Dynamically populated certified winner cards -->
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>Chess Picker System &copy; 2026 Chess DAO. All Rights Reserved. Built with Web3 Security & Verification Standards.</p>
+    </footer>
   </div>
 
   <!-- Audio elements for feedback sound effects -->
