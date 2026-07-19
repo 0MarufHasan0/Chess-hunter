@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Chess Picker - Official Web3 Twitter Draw & Certificate Validation System</title>
   <!-- SEO Meta Tags -->
   <meta name="description" content="Official Chess DAO Twitter/X Winner Picker & Certificate Verification System. Pick transparent giveaway winners and verify certificate authenticity instantly.">
@@ -20,6 +20,9 @@
   <div class="bg-glow glow-1"></div>
   <div class="bg-glow glow-2"></div>
   <div class="bg-glow glow-3"></div>
+
+  <!-- Confetti Canvas overlay -->
+  <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
 
   <div class="app-container">
     <!-- Header -->
@@ -153,8 +156,13 @@
           <canvas id="cert-canvas" width="1200" height="600" class="hidden"></canvas>
 
           <div class="cert-preview-container">
-            <div class="preview-title">Official Certificate Slip Preview:</div>
-            <img id="cert-preview" class="cert-preview-img" alt="Certificate Preview">
+            <div class="preview-header">
+              <span class="preview-title">Official Certificate Slip Preview:</span>
+              <span class="preview-hint">🔍 Tap image to zoom</span>
+            </div>
+            <div class="img-preview-wrapper" id="img-preview-trigger">
+              <img id="cert-preview" class="cert-preview-img" alt="Certificate Preview">
+            </div>
           </div>
 
           <div class="action-buttons">
@@ -237,6 +245,14 @@
     <footer class="app-footer">
       <p>Chess Picker System &copy; 2026 Chess DAO. All Rights Reserved. Built with Web3 Security & Verification Standards.</p>
     </footer>
+  </div>
+
+  <!-- Certificate Lightbox Modal -->
+  <div id="lightbox-modal" class="lightbox-modal hidden">
+    <div class="lightbox-content">
+      <span id="lightbox-close" class="lightbox-close">&times;</span>
+      <img id="lightbox-img" class="lightbox-img" alt="Enlarged Certificate">
+    </div>
   </div>
 
   <!-- Audio elements for feedback sound effects -->

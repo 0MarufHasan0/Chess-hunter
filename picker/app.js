@@ -52,6 +52,12 @@ const statFollowers = document.getElementById('stat-followers');
 const statAge = document.getElementById('stat-age');
 const certCanvas = document.getElementById('cert-canvas');
 const certPreview = document.getElementById('cert-preview');
+const imgPreviewWrapper = document.getElementById('img-preview-trigger');
+
+// Lightbox elements
+const lightboxModal = document.getElementById('lightbox-modal');
+const lightboxImg = document.getElementById('lightbox-img');
+const lightboxClose = document.getElementById('lightbox-close');
 
 // Validation elements
 const verifyInput = document.getElementById('verify-input');
@@ -96,6 +102,86 @@ function playTickSound() {
   } catch (e) {
     // Audio context unsupported or blocked
   }
+}
+
+// Confetti Particle Celebration Engine
+function triggerConfettiCelebration() {
+  const canvas = document.getElementById('confetti-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const particles = [];
+  const colors = ['#00f2fe', '#ffd700', '#00e676', '#ff4081', '#7c4dff'];
+
+  for (let i = 0; i < 80; i++) {
+    particles.push({
+      x: canvas.width / 2,
+      y: canvas.height / 2,
+      rx: (Math.random() - 0.5) * 16,
+      ry: (Math.random() - 0.5) * 16 - Math.random() * 8,
+      size: Math.random() * 8 + 4,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      alpha: 1,
+      rotation: Math.random() * Math.PI * 2
+    });
+  }
+
+  let animationFrame;
+  function updateConfetti() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let active = false;
+
+    particles.forEach(p => {
+      p.x += p.rx;
+      p.y += p.ry;
+      p.ry += 0.25; // gravity
+      p.alpha -= 0.012;
+      p.rotation += 0.1;
+
+      if (p.alpha > 0) {
+        active = true;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+        ctx.restore();
+      }
+    });
+
+    if (active) {
+      animationFrame = requestAnimationFrame(updateConfetti);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      cancelAnimationFrame(animationFrame);
+    }
+  }
+
+  updateConfetti();
+}
+
+// Lightbox Modal Setup
+if (imgPreviewWrapper && certPreview && lightboxModal) {
+  imgPreviewWrapper.addEventListener('click', () => {
+    lightboxImg.src = certPreview.src;
+    lightboxModal.classList.remove('hidden');
+  });
+
+  if (lightboxClose) {
+    lightboxClose.addEventListener('click', () => {
+      lightboxModal.classList.add('hidden');
+    });
+  }
+
+  lightboxModal.addEventListener('click', (e) => {
+    if (e.target === lightboxModal) {
+      lightboxModal.classList.add('hidden');
+    }
+  });
 }
 
 // Slider label listeners
@@ -163,6 +249,7 @@ function startWinnerDraw() {
   const minAge = parseInt(ageSlider.value);
   const reqLike = document.getElementById('req-like').checked;
   const reqRt = document.getElementById('req-rt').checked;
+  const requireFollowVal = document.getElementById('require-follow').value.trim();
   
   if (!postLink) {
     alert("Please enter a valid Twitter/X Post Link to verify replies.");
@@ -275,6 +362,7 @@ function startWinnerDraw() {
       setTimeout(() => {
         isDrawing = false;
         showWinners(selectedWinners);
+        triggerConfettiCelebration();
       }, 600);
     }
   }
@@ -674,7 +762,6 @@ function renderValidationResult(serialQuery, fileName = null) {
   resHash.textContent = hashVal;
   resDate.textContent = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-  // Generate 2 to 5 verified winners for the validation result display
   const sampleWinners = mockCandidatesPool.slice(0, Math.floor(Math.random() * 4) + 2);
   verifiedWinnersList.innerHTML = '';
 
