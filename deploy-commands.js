@@ -197,6 +197,11 @@ const commands = [
       option.setName('winner_count')
         .setDescription('Number of winners to pick (default: 1, max: 10)')
         .setRequired(false)
+    )
+    .addBooleanOption(option =>
+      option.setName('allow_repeat')
+        .setDescription('Allow the same user to win repeatedly / enter multiple times (default: false)')
+        .setRequired(false)
     ),
 
   new SlashCommandBuilder()

@@ -1407,11 +1407,19 @@ async function handleChessPickerButtonClick(interaction) {
     .setPlaceholder('0')
     .setRequired(false);
 
+  const allowRepeatInput = new TextInputBuilder()
+    .setCustomId('modal_allow_repeat')
+    .setLabel('Allow Same Person Repeat Winners? (true/false)')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('false (default: false, set true to allow repeat)')
+    .setRequired(false);
+
   modal.addComponents(
     new ActionRowBuilder().addComponents(postUrlInput),
     new ActionRowBuilder().addComponents(winnerCountInput),
     new ActionRowBuilder().addComponents(minFollowersInput),
-    new ActionRowBuilder().addComponents(minAgeInput)
+    new ActionRowBuilder().addComponents(minAgeInput),
+    new ActionRowBuilder().addComponents(allowRepeatInput)
   );
 
   await interaction.showModal(modal);
@@ -1425,10 +1433,12 @@ async function handleChessPickerModalSubmit(interaction) {
   const winnerCountStr = interaction.fields.getTextInputValue('modal_winner_count').trim() || '1';
   const minFollowersStr = interaction.fields.getTextInputValue('modal_min_followers').trim() || '0';
   const minAgeStr = interaction.fields.getTextInputValue('modal_min_age').trim() || '0';
+  const allowRepeatStr = (interaction.fields.getTextInputValue('modal_allow_repeat') || '').trim().toLowerCase();
 
   const winnerCount = Math.max(1, Math.min(10, parseInt(winnerCountStr, 10) || 1));
   const minFollowers = Math.max(0, parseInt(minFollowersStr, 10) || 0);
   const minAge = Math.max(0, parseInt(minAgeStr, 10) || 0);
+  const allowRepeat = (allowRepeatStr === 'true' || allowRepeatStr === 'yes' || allowRepeatStr === '1');
 
   try {
     const postMatch = postUrl.match(/status\/(\d+)/);
@@ -1537,18 +1547,22 @@ async function handleChessPickerModalSubmit(interaction) {
     const isProfileCheckNeeded = (minFollowers > 0 || minAge > 0);
 
     if (!isProfileCheckNeeded) {
-      const seenUsers = new Set();
-      const uniqueReplies = [];
-      for (const r of replies) {
-        const unameLower = r.username.toLowerCase();
-        if (!seenUsers.has(unameLower)) {
-          seenUsers.add(unameLower);
-          uniqueReplies.push(r);
+      let poolReplies = replies;
+      if (!allowRepeat) {
+        const seenUsers = new Set();
+        const uniqueReplies = [];
+        for (const r of replies) {
+          const unameLower = r.username.toLowerCase();
+          if (!seenUsers.has(unameLower)) {
+            seenUsers.add(unameLower);
+            uniqueReplies.push(r);
+          }
         }
+        poolReplies = uniqueReplies;
       }
 
-      const countToPick = Math.min(winnerCount, uniqueReplies.length);
-      const shuffled = [...uniqueReplies].sort(() => 0.5 - Math.random());
+      const countToPick = Math.min(winnerCount, poolReplies.length);
+      const shuffled = [...poolReplies].sort(() => 0.5 - Math.random());
       const selectedWinnersRaw = shuffled.slice(0, countToPick);
 
       for (const r of selectedWinnersRaw) {
@@ -1609,8 +1623,8 @@ async function handleChessPickerModalSubmit(interaction) {
         }
       }
     } else {
-      const uniqueUsernames = [...new Set(replies.map(r => r.username))];
-      for (const uname of uniqueUsernames.slice(0, 15)) {
+      const targetUsernames = allowRepeat ? replies.map(r => r.username) : [...new Set(replies.map(r => r.username))];
+      for (const uname of targetUsernames.slice(0, 15)) {
         try {
           let profile = null;
           const cachedProfile = await TwitterProfileCache.findOne({ username: uname.toLowerCase() });
@@ -1673,7 +1687,8 @@ async function handleChessPickerModalSubmit(interaction) {
         content: `❌ No reply authors matched the eligibility filters:\n` +
                  `• Minimum Followers: \`${minFollowers}\`\n` +
                  `• Minimum Account Age: \`${minAge} days\`\n` +
-                 `• Checked \`${isProfileCheckNeeded ? Math.min(replies.length, 15) : replies.length}\` unique candidates.`
+                 `• Allow Repeat Winners: \`${allowRepeat ? 'Yes' : 'No'}\`\n` +
+                 `• Checked \`${isProfileCheckNeeded ? Math.min(replies.length, 15) : replies.length}\` candidates.`
       });
     }
 
@@ -1711,7 +1726,7 @@ async function handleChessPickerModalSubmit(interaction) {
         ...winnerFields,
         { 
           name: '✅ Eligibility Criteria Checked', 
-          value: `• Minimum Followers: \`${minFollowers}\`\n• Minimum Account Age: \`${minAge} days\`\n• Follow requirements verified\n• Likes & Retweets validated`, 
+          value: `• Minimum Followers: \`${minFollowers}\`\n• Minimum Account Age: \`${minAge} days\`\n• Allow Repeat Winners: \`${allowRepeat ? 'Yes (Enabled)' : 'No (Disabled)'}\`\n• Follow requirements verified\n• Likes & Retweets validated`, 
           inline: false 
         }
       ],
@@ -2104,6 +2119,7 @@ client.on('interactionCreate', async (interaction) => {
         const requireFollow = interaction.options.getString('require_follow');
         const mustLike = interaction.options.getBoolean('must_like') ?? true;
         const mustRt = interaction.options.getBoolean('must_rt') ?? true;
+        const allowRepeat = interaction.options.getBoolean('allow_repeat') || false;
 
         const urlMatch = postUrl.match(/(?:twitter|x)\.com\/([a-zA-Z0-9_]+)\/status\/([0-9]+)/);
         if (!urlMatch) {
@@ -2218,18 +2234,22 @@ client.on('interactionCreate', async (interaction) => {
         const isProfileCheckNeeded = (minFollowers > 0 || minAge > 0);
 
         if (!isProfileCheckNeeded) {
-          const seenUsers = new Set();
-          const uniqueReplies = [];
-          for (const r of replies) {
-            const unameLower = r.username.toLowerCase();
-            if (!seenUsers.has(unameLower)) {
-              seenUsers.add(unameLower);
-              uniqueReplies.push(r);
+          let poolReplies = replies;
+          if (!allowRepeat) {
+            const seenUsers = new Set();
+            const uniqueReplies = [];
+            for (const r of replies) {
+              const unameLower = r.username.toLowerCase();
+              if (!seenUsers.has(unameLower)) {
+                seenUsers.add(unameLower);
+                uniqueReplies.push(r);
+              }
             }
+            poolReplies = uniqueReplies;
           }
 
-          const countToPick = Math.min(winnerCount, uniqueReplies.length);
-          const shuffled = [...uniqueReplies].sort(() => 0.5 - Math.random());
+          const countToPick = Math.min(winnerCount, poolReplies.length);
+          const shuffled = [...poolReplies].sort(() => 0.5 - Math.random());
           const selectedWinnersRaw = shuffled.slice(0, countToPick);
 
           for (const r of selectedWinnersRaw) {
@@ -2291,8 +2311,8 @@ client.on('interactionCreate', async (interaction) => {
           }
         } else {
           // Profile requirements specified: check cache first, then fetch profiles with rate-limit protection delay
-          const uniqueUsernames = [...new Set(replies.map(r => r.username))];
-          for (const uname of uniqueUsernames.slice(0, 15)) {
+          const targetUsernames = allowRepeat ? replies.map(r => r.username) : [...new Set(replies.map(r => r.username))];
+          for (const uname of targetUsernames.slice(0, 15)) {
             try {
               let profile = null;
               
@@ -2367,7 +2387,8 @@ client.on('interactionCreate', async (interaction) => {
             content: `❌ No reply authors matched the eligibility filters:\n` +
                      `• Minimum Followers: \`${minFollowers}\`\n` +
                      `• Minimum Account Age: \`${minAge} days\`\n` +
-                     `• Checked \`${isProfileCheckNeeded ? Math.min(replies.length, 15) : replies.length}\` unique candidates.`
+                     `• Allow Repeat Winners: \`${allowRepeat ? 'Yes' : 'No'}\`\n` +
+                     `• Checked \`${isProfileCheckNeeded ? Math.min(replies.length, 15) : replies.length}\` candidates.`
           });
         }
 
@@ -2407,7 +2428,7 @@ client.on('interactionCreate', async (interaction) => {
             ...winnerFields,
             { 
               name: '✅ Eligibility Criteria Checked', 
-              value: `• Minimum Followers: \`${minFollowers}\`\n• Minimum Account Age: \`${minAge} days\`\n• Follow requirements verified\n• Likes & Retweets validated`, 
+              value: `• Minimum Followers: \`${minFollowers}\`\n• Minimum Account Age: \`${minAge} days\`\n• Allow Repeat Winners: \`${allowRepeat ? 'Yes (Enabled)' : 'No (Disabled)'}\`\n• Follow requirements verified\n• Likes & Retweets validated`, 
               inline: false 
             }
           ],
