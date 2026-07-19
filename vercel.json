@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/picker/index.html" },
+    { "source": "/(.*)", "destination": "/picker/$1" }
+  ]
+}
