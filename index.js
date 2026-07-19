@@ -2359,167 +2359,31 @@ client.on('interactionCreate', async (interaction) => {
         const winnerCountOption = interaction.options.getInteger('winner_count') || 1;
         const winnerCount = Math.max(1, Math.min(25, winnerCountOption)); // Max 25 winners
 
-        // 3. Fetch candidate profiles and check qualifications
-        const candidates = [];
-        const isProfileCheckNeeded = (minFollowers > 0 || minAge > 0 || !!requireFollow);
+        // 3. Fetch all real tweet repliers with authentic profiles and validate
+        const allCandidates = await fetchRealTweetCandidates(postUrl);
 
-        if (!isProfileCheckNeeded) {
-          let poolReplies = replies;
-          if (!allowRepeat) {
-            const seenUsers = new Set();
-            const uniqueReplies = [];
-            for (const r of replies) {
-              const unameLower = r.username.toLowerCase();
-              if (!seenUsers.has(unameLower)) {
-                seenUsers.add(unameLower);
-                uniqueReplies.push(r);
-              }
-            }
-            poolReplies = uniqueReplies;
-          }
-
-          const countToPick = Math.min(winnerCount, poolReplies.length);
-          const shuffled = [...poolReplies].sort(() => 0.5 - Math.random());
-          const selectedWinnersRaw = shuffled.slice(0, countToPick);
-
-          for (const r of selectedWinnersRaw) {
-            try {
-              let profile = null;
-              const cachedProfile = await TwitterProfileCache.findOne({ username: r.username.toLowerCase() });
-              if (cachedProfile) {
-                profile = {
-                  name: cachedProfile.name,
-                  followersCount: cachedProfile.followersCount,
-                  joined: cachedProfile.joined,
-                  avatar: cachedProfile.avatar
-                };
-              } else {
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                const fetchedProfile = await activeScraper.getProfile(r.username);
-                if (fetchedProfile) {
-                  profile = {
-                    name: fetchedProfile.name || fetchedProfile.displayName || r.username,
-                    followersCount: fetchedProfile.followersCount || 0,
-                    joined: fetchedProfile.joined || null,
-                    avatar: fetchedProfile.avatar || null
-                  };
-                  await TwitterProfileCache.create({
-                    username: r.username.toLowerCase(),
-                    name: profile.name,
-                    followersCount: profile.followersCount,
-                    joined: profile.joined,
-                    avatar: profile.avatar
-                  }).catch(() => {});
-                }
-              }
-
-              let ageDays = 0;
-              if (profile && profile.joined) {
-                const joinedDate = new Date(profile.joined);
-                ageDays = Math.floor((Date.now() - joinedDate.getTime()) / (1000 * 60 * 60 * 24));
-              }
-
-              candidates.push({
-                name: profile ? profile.name : (r.name || r.username),
-                handle: `@${r.username}`,
-                followers: profile ? profile.followersCount : 0,
-                age: ageDays,
-                avatar: profile ? profile.avatar : null,
-                replyId: r.id
-              });
-            } catch (err) {
-              console.error(`Error fetching winner profile @${r.username}:`, err.message);
-              candidates.push({
-                name: r.name || r.username,
-                handle: `@${r.username}`,
-                followers: 0,
-                age: 0,
-                avatar: null,
-                replyId: r.id
-              });
-            }
-          }
-        } else {
-          // Profile requirements specified: check cache first, then fetch profiles with rate-limit protection delay
-          const targetUsernames = allowRepeat ? replies.map(r => r.username) : [...new Set(replies.map(r => r.username))];
-          const scanLimit = Math.min(targetUsernames.length, Math.max(winnerCount * 2, 50));
-          for (const uname of targetUsernames.slice(0, scanLimit)) {
-            try {
-              let profile = null;
-              
-              // 1. Check MongoDB Cache first
-              const cachedProfile = await TwitterProfileCache.findOne({ username: uname.toLowerCase() });
-              if (cachedProfile) {
-                profile = {
-                  name: cachedProfile.name,
-                  followersCount: cachedProfile.followersCount,
-                  joined: cachedProfile.joined,
-                  avatar: cachedProfile.avatar
-                };
-                console.log(`[Cache Hit] Retrieved profile for @${uname} from database cache.`);
-              } else {
-                // 2. Cache Miss: Fetch from Twitter with 1.5-second rate-limit protection delay
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                
-                const fetchedProfile = await activeScraper.getProfile(uname);
-                if (fetchedProfile) {
-                  profile = {
-                    name: fetchedProfile.name || fetchedProfile.displayName || uname,
-                    followersCount: fetchedProfile.followersCount || 0,
-                    joined: fetchedProfile.joined || null,
-                    avatar: fetchedProfile.avatar || null
-                  };
-                  
-                  // Save to Cache (auto-expires in 24 hours)
-                  await TwitterProfileCache.create({
-                    username: uname.toLowerCase(),
-                    name: profile.name,
-                    followersCount: profile.followersCount,
-                    joined: profile.joined,
-                    avatar: profile.avatar
-                  }).catch(cacheErr => console.error(`Failed to cache profile for @${uname}:`, cacheErr.message));
-                  
-                  console.log(`[Cache Miss] Fetched profile for @${uname} from Twitter API and cached.`);
-                }
-              }
-
-              if (!profile) continue;
-
-              // Check followers count
-              if (minFollowers && (profile.followersCount || 0) < minFollowers) continue;
-
-              // Check account age
-              let ageDays = 0;
-              if (profile.joined) {
-                const joinedDate = new Date(profile.joined);
-                ageDays = Math.floor((Date.now() - joinedDate.getTime()) / (1000 * 60 * 60 * 24));
-              }
-              if (minAge && ageDays < minAge) continue;
-
-              // Find the corresponding reply tweet to get its ID
-              const matchingReply = replies.find(r => r.username.toLowerCase() === uname.toLowerCase());
-
-              candidates.push({
-                name: profile.name,
-                handle: `@${uname}`,
-                followers: profile.followersCount,
-                age: ageDays,
-                avatar: profile.avatar,
-                replyId: matchingReply ? matchingReply.id : null
-              });
-            } catch (profileErr) {
-              console.error(`Error verifying details for user @${uname}:`, profileErr.message);
-            }
-          }
+        if (allCandidates.length === 0) {
+          return interaction.editReply({ content: `❌ No replies found for status ID \`${tweetId}\`. Make sure the post is public and has replies.` });
         }
+
+        const seenUsers = new Set();
+        const candidates = allCandidates.filter(user => {
+          const unameLower = user.handle.toLowerCase();
+          if (!allowRepeat && seenUsers.has(unameLower)) return false;
+          seenUsers.add(unameLower);
+
+          if (minFollowers > 0 && user.followers < minFollowers) return false;
+          if (minAge > 0 && user.age < minAge) return false;
+          return true;
+        });
 
         if (candidates.length === 0) {
           return interaction.editReply({ 
             content: `❌ No reply authors matched the eligibility filters:\n` +
-                     `• Minimum Followers: \`${minFollowers}\`\n` +
-                     `• Minimum Account Age: \`${minAge} days\`\n` +
+                     `• Minimum Followers required: \`${minFollowers}\`\n` +
+                     `• Minimum Account Age required: \`${minAge} days\`\n` +
                      `• Allow Repeat Winners: \`${allowRepeat ? 'Yes' : 'No'}\`\n` +
-                     `• Checked \`${isProfileCheckNeeded ? Math.min(replies.length, 15) : replies.length}\` candidates.`
+                     `• Total candidates checked: \`${allCandidates.length}\`.`
           });
         }
 
