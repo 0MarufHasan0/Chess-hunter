@@ -993,6 +993,125 @@ function drawServerRoundRect(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
+// Global helper to fetch real tweet repliers & candidate profile data using authenticated X session
+async function fetchRealTweetCandidates(postUrl) {
+  const urlMatch = postUrl.match(/(?:twitter|x)\.com\/([a-zA-Z0-9_]+)\/status\/([0-9]+)/);
+  if (!urlMatch) throw new Error('Invalid Twitter/X status URL format.');
+
+  const tweetId = urlMatch[2];
+  const activeScraper = await getTwitterScraper();
+
+  const baseUrl = 'https://twitter.com/i/api/graphql/xOhkmRac04YFZmOzU9PJHg/TweetDetail';
+  const variables = {
+    focalTweetId: tweetId,
+    with_rux_injections: false,
+    includePromotedContent: true,
+    withCommunity: true,
+    withQuickPromoteEligibilityTweetFields: true,
+    withBirdwatchNotes: true,
+    withVoice: true,
+    withV2Timeline: true
+  };
+  const features = {
+    responsive_web_graphql_exclude_directive_enabled: true,
+    verified_phone_label_enabled: false,
+    creator_subscriptions_tweet_preview_api_enabled: true,
+    responsive_web_graphql_timeline_navigation_enabled: true,
+    responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
+    tweetypie_unmention_optimization_enabled: true,
+    responsive_web_edit_tweet_api_enabled: true,
+    graphql_is_translatable_rweb_tweet_is_translatable_enabled: true,
+    view_counts_everywhere_api_enabled: true,
+    longform_notetweets_consumption_enabled: true,
+    responsive_web_twitter_article_tweet_consumption_enabled: false,
+    tweet_awards_web_tipping_enabled: false,
+    freedom_of_speech_not_reach_fetch_enabled: true,
+    standardized_nudges_misinfo: true,
+    tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true,
+    longform_notetweets_rich_text_read_enabled: true,
+    longform_notetweets_inline_media_enabled: true,
+    responsive_web_media_download_video_enabled: false,
+    responsive_web_enhance_cards_enabled: false
+  };
+
+  const params = new URLSearchParams();
+  params.set('variables', JSON.stringify(variables));
+  params.set('features', JSON.stringify(features));
+
+  const requestUrl = `${baseUrl}?${params.toString()}`;
+  const headers = new Headers();
+  await activeScraper.auth.installTo(headers, requestUrl);
+
+  const response = await activeScraper.auth.fetch(requestUrl, {
+    method: 'GET',
+    headers,
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    throw new Error(`Twitter API returned status ${response.status}`);
+  }
+
+  const rawData = await response.json();
+
+  function extractTweets(obj, collected = []) {
+    if (!obj || typeof obj !== 'object') return collected;
+    if (obj.legacy && obj.core && obj.legacy.id_str) {
+      const legacy = obj.legacy;
+      const userLegacy = obj.core.user_results?.result?.legacy;
+      if (userLegacy) {
+        collected.push({
+          id: legacy.id_str,
+          text: legacy.full_text || legacy.text || '',
+          username: userLegacy.screen_name,
+          name: userLegacy.name,
+          inReplyToStatusId: legacy.in_reply_to_status_id_str,
+          followersCount: userLegacy.followers_count || 100,
+          joined: userLegacy.created_at || '',
+          avatar: userLegacy.profile_image_url_https ? userLegacy.profile_image_url_https.replace('_normal', '_400x400') : null
+        });
+      }
+    }
+    for (const key of Object.keys(obj)) {
+      extractTweets(obj[key], collected);
+    }
+    return collected;
+  }
+
+  const allExtractedTweets = extractTweets(rawData);
+  const replies = allExtractedTweets.filter(t => t.inReplyToStatusId === tweetId);
+
+  const seenUsers = new Set();
+  const candidates = [];
+
+  for (const r of replies) {
+    const unameLower = r.username.toLowerCase();
+    if (seenUsers.has(unameLower)) continue;
+    seenUsers.add(unameLower);
+
+    let ageDays = 30;
+    if (r.joined) {
+      const joinDate = new Date(r.joined);
+      if (!isNaN(joinDate.getTime())) {
+        ageDays = Math.floor((Date.now() - joinDate.getTime()) / (1000 * 60 * 60 * 24));
+      }
+    }
+
+    candidates.push({
+      name: r.name || r.username,
+      handle: `@${r.username}`,
+      followers: r.followersCount || 100,
+      age: ageDays,
+      likes: true,
+      rts: true,
+      avatar: r.avatar || `https://unavatar.io/twitter/${r.username}`,
+      wallet: extractWalletAddress(r.text)
+    });
+  }
+
+  return candidates;
+}
+
 // Fetch user profile picture avatar over HTTP safely with fallback
 async function downloadAvatarBuffer(url, fallbackName = 'User') {
   if (url) {
@@ -2662,3 +2781,70 @@ process.on('SIGINT', () => {
   await connectDB(config.mongoUri);
   await client.login(config.discordToken);
 })();
+
+// Start HTTP Web Server to serve Web Picker and Real X (Twitter) API Endpoint
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+
+const webServer = http.createServer(async (req, res) => {
+  const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  // CORS Headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  // API Endpoint: Fetch real Twitter post replies using authenticated X scraper session
+  if (parsedUrl.pathname === '/api/fetch-tweet-replies') {
+    const postUrl = parsedUrl.searchParams.get('url');
+    if (!postUrl) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Missing post URL query parameter' }));
+      return;
+    }
+    try {
+      console.log(`🌐 Web API: Fetching real Twitter repliers for URL: ${postUrl}`);
+      const candidates = await fetchRealTweetCandidates(postUrl);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, count: candidates.length, candidates }));
+    } catch (err) {
+      console.error('🌐 Web API error fetching tweet replies:', err.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: err.message }));
+    }
+    return;
+  }
+
+  // Serve static files from picker directory
+  let reqPath = parsedUrl.pathname === '/' ? 'index.html' : parsedUrl.pathname;
+  let filePath = path.join(__dirname, 'picker', reqPath);
+
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeTypes = {
+      '.html': 'text/html',
+      '.css': 'text/css',
+      '.js': 'application/javascript',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.json': 'application/json'
+    };
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
+    res.writeHead(200, { 'Content-Type': contentType });
+    fs.createReadStream(filePath).pipe(res);
+  } else {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
+  }
+});
+
+webServer.listen(PORT, () => {
+  console.log(`🌐 Chess Picker Web Server & X API bridge running on port ${PORT}`);
+});

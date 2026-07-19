@@ -254,7 +254,7 @@ function resetDrawState() {
   currentWinners = [];
 }
 
-function startWinnerDraw() {
+async function startWinnerDraw() {
   if (isDrawing) return;
   
   const postLink = document.getElementById('post-link').value.trim();
@@ -286,11 +286,27 @@ function startWinnerDraw() {
           age: Math.floor(Math.random() * 300) + 30,
           likes: true,
           rts: true,
-          avatar: "https://unavatar.io/x/" + cleanHandle.substring(1)
+          avatar: "https://unavatar.io/twitter/" + cleanHandle.substring(1)
         };
       });
   } else {
-    candidates = [...mockCandidatesPool];
+    // Try fetching REAL candidates from backend Twitter GraphQL scraper API
+    try {
+      const apiRes = await fetch(`/api/fetch-tweet-replies?url=${encodeURIComponent(postLink)}`);
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        if (data.success && Array.isArray(data.candidates) && data.candidates.length > 0) {
+          console.log(`✨ Successfully fetched ${data.candidates.length} REAL candidates directly from X (Twitter)!`);
+          candidates = data.candidates;
+        }
+      }
+    } catch (err) {
+      console.warn("Backend X API offline or standalone mode, using mock candidate pool:", err.message);
+    }
+
+    if (candidates.length === 0) {
+      candidates = [...mockCandidatesPool];
+    }
   }
 
   const filtered = candidates.filter(user => {
