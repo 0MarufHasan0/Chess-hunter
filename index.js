@@ -1006,23 +1006,39 @@ async function downloadAvatarBuffer(url) {
   }
 }
 
-// Helper to extract EVM, Solana, or Bitcoin wallet addresses from reply text
+// Helper to extract EVM, Solana, Sui/Aptos, TRON, TON, Bitcoin or Cosmos wallet addresses from reply text
 function extractWalletAddress(text) {
   if (!text) return 'N/A';
   
-  // 1. EVM / Ethereum / BSC / Polygon address (0x followed by 40 hex chars)
-  const evmMatch = text.match(/0x[a-fA-F0-9]{40}/i);
+  // 1. EVM / Ethereum / BSC / Polygon / Arbitrum / Base (0x followed by 40 hex chars)
+  const evmMatch = text.match(/0x[a-fA-F0-9]{40}\b/i);
   if (evmMatch) return evmMatch[0];
 
-  // 2. Solana address (Base58, 32 to 44 alphanumeric chars, excluding O, 0, I, l)
+  // 2. Sui / Aptos address (0x followed by 64 hex chars)
+  const suiMatch = text.match(/0x[a-fA-F0-9]{64}\b/i);
+  if (suiMatch) return suiMatch[0];
+
+  // 3. TRON address (starts with T followed by 33 base58 chars)
+  const tronMatch = text.match(/T[A-Za-z1-9]{33}\b/);
+  if (tronMatch) return tronMatch[0];
+
+  // 4. TON address (starts with EQ or UQ followed by 44-46 base64url chars)
+  const tonMatch = text.match(/(?:EQ|UQ)[a-zA-Z0-9_-]{44,46}\b/);
+  if (tonMatch) return tonMatch[0];
+
+  // 5. Cosmos / Injective / SEI / Osmosis address
+  const cosmosMatch = text.match(/(?:cosmos|inj|sei|osmo)1[a-z0-9]{38}\b/i);
+  if (cosmosMatch) return cosmosMatch[0];
+
+  // 6. Bitcoin address (1..., 3... or bc1...)
+  const btcMatch = text.match(/(?:bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39}\b/);
+  if (btcMatch) return btcMatch[0];
+
+  // 7. Solana address (Base58, 32 to 44 alphanumeric chars, excluding O, 0, I, l)
   const solMatch = text.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/);
   if (solMatch && !solMatch[0].startsWith('http') && !solMatch[0].includes('/') && !solMatch[0].includes('status')) {
     return solMatch[0];
   }
-
-  // 3. Bitcoin address (1... or 3... or bc1...)
-  const btcMatch = text.match(/(?:bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39}/);
-  if (btcMatch) return btcMatch[0];
 
   return 'No Wallet Found';
 }
