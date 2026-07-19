@@ -309,7 +309,14 @@ async function startWinnerDraw() {
     }
   }
 
+  const cleanPostKey = `drawn_winners_${postLink.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const prevWinners = JSON.parse(localStorage.getItem(cleanPostKey) || '[]');
+  const prevWinnersSet = new Set(prevWinners.map(h => h.toLowerCase()));
+
   const filtered = candidates.filter(user => {
+    const handleLower = user.handle.toLowerCase();
+    // Exclude previously drawn winners if allowRepeat is false (default)
+    if (prevWinnersSet.has(handleLower)) return false;
     if (user.followers < minFollowers) return false;
     if (user.age < minAge) return false;
     if (reqLike && !user.likes) return false;
@@ -318,7 +325,11 @@ async function startWinnerDraw() {
   });
 
   if (filtered.length === 0) {
-    alert("No candidates matched your filter requirements! Try lowering the criteria.");
+    if (prevWinners.length > 0) {
+      alert(`All qualified candidates (${prevWinners.length} users) have already been drawn for this post! Clear custom handles or reset draw memory to draw again.`);
+    } else {
+      alert("No candidates matched your filter requirements! Try lowering the criteria.");
+    }
     return;
   }
 
@@ -326,7 +337,7 @@ async function startWinnerDraw() {
   const heroLogo = liveSelectorCard.querySelector('.chess-icon-large');
   if (heroLogo) heroLogo.style.display = 'none';
   liveSelectorCard.querySelector('.section-title').textContent = 'Selecting Winner...';
-  liveSelectorCard.querySelector('.desc-text').textContent = `Filtering from ${filtered.length} qualified entries.`;
+  liveSelectorCard.querySelector('.desc-text').textContent = `Filtering from ${filtered.length} qualified entries (${prevWinners.length} previous winners excluded).`;
   spinnerContainer.classList.remove('hidden');
 
   spinnerList.innerHTML = '';
@@ -365,6 +376,10 @@ async function startWinnerDraw() {
   const shuffled = [...filtered].sort(() => 0.5 - Math.random());
   const selectedWinners = shuffled.slice(0, countToPick);
   const targetWinner = selectedWinners[0];
+
+  // Save selected winners to localStorage for this post link so subsequent draws exclude them
+  const updatedDrawnHandles = Array.from(new Set([...prevWinners, ...selectedWinners.map(w => w.handle)]));
+  localStorage.setItem(cleanPostKey, JSON.stringify(updatedDrawnHandles));
   
   const targetScrollIndex = spinArray.length - filtered.length + filtered.indexOf(targetWinner) - 1;
   const itemHeight = 120;

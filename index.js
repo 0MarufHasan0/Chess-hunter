@@ -1489,6 +1489,9 @@ async function createWinnerSlipBuffer(winners) {
   return canvas.toBuffer('image/png');
 }
 
+// Global store tracking previously drawn winners per Tweet ID to exclude duplicates across multiple draws
+const previousWinnersMap = new Map();
+
 // Handle Modal submissions first
 async function handleChessPickerButtonClick(interaction) {
   try {
@@ -1512,16 +1515,16 @@ async function handleChessPickerButtonClick(interaction) {
       .setPlaceholder('1')
       .setRequired(false);
 
+    const requireFollowInput = new TextInputBuilder()
+      .setCustomId('modal_require_follow')
+      .setLabel('Must Follow Handles (comma separated)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('@ChessDAO, @PartnerAccount')
+      .setRequired(false);
+
     const minFollowersInput = new TextInputBuilder()
       .setCustomId('modal_min_followers')
       .setLabel('Min Followers (Optional)')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('0')
-      .setRequired(false);
-
-    const minAgeInput = new TextInputBuilder()
-      .setCustomId('modal_min_age')
-      .setLabel('Min Account Age in Days (Optional)')
       .setStyle(TextInputStyle.Short)
       .setPlaceholder('0')
       .setRequired(false);
@@ -1530,14 +1533,14 @@ async function handleChessPickerButtonClick(interaction) {
       .setCustomId('modal_allow_repeat')
       .setLabel('Allow Repeat Winners? (true/false)')
       .setStyle(TextInputStyle.Short)
-      .setPlaceholder('false (set true to allow repeat winners)')
+      .setPlaceholder('false (excludes previous winners on same post)')
       .setRequired(false);
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(postUrlInput),
       new ActionRowBuilder().addComponents(winnerCountInput),
+      new ActionRowBuilder().addComponents(requireFollowInput),
       new ActionRowBuilder().addComponents(minFollowersInput),
-      new ActionRowBuilder().addComponents(minAgeInput),
       new ActionRowBuilder().addComponents(allowRepeatInput)
     );
 
@@ -1556,270 +1559,62 @@ async function handleChessPickerModalSubmit(interaction) {
 
   const postUrl = interaction.fields.getTextInputValue('modal_post_url').trim();
   const winnerCountStr = interaction.fields.getTextInputValue('modal_winner_count').trim() || '1';
+  const requireFollowStr = (interaction.fields.getTextInputValue('modal_require_follow') || '').trim();
   const minFollowersStr = interaction.fields.getTextInputValue('modal_min_followers').trim() || '0';
-  const minAgeStr = interaction.fields.getTextInputValue('modal_min_age').trim() || '0';
   const allowRepeatStr = (interaction.fields.getTextInputValue('modal_allow_repeat') || '').trim().toLowerCase();
 
   const winnerCount = Math.max(1, Math.min(20, parseInt(winnerCountStr, 10) || 1));
   const minFollowers = Math.max(0, parseInt(minFollowersStr, 10) || 0);
-  const minAge = Math.max(0, parseInt(minAgeStr, 10) || 0);
   const allowRepeat = (allowRepeatStr === 'true' || allowRepeatStr === 'yes' || allowRepeatStr === '1');
 
   try {
-    const postMatch = postUrl.match(/status\/(\d+)/);
-    if (!postMatch) {
-      return interaction.editReply({ content: '❌ Invalid Twitter post URL. Please make sure the URL contains `/status/` followed by the Tweet ID.' });
+    const postMatch = postUrl.match(/(?:twitter|x)\.com\/(?:([a-zA-Z0-9_]+)\/)?(?:i\/)?status\/([0-9]+)/i);
+    if (!postMatch || !postMatch[2]) {
+      return interaction.editReply({ content: '❌ Invalid Twitter post URL format. Please enter a valid URL containing status ID.' });
     }
-    const tweetId = postMatch[1];
+    const tweetId = postMatch[2];
 
-    let activeScraper;
-    try {
-      activeScraper = await getTwitterScraper();
-    } catch (err) {
-      return interaction.editReply({ content: `❌ Twitter client connection failed: ${err.message}` });
+    const allCandidates = await fetchRealTweetCandidates(postUrl);
+    if (allCandidates.length === 0) {
+      return interaction.editReply({ content: `❌ No reply candidates found for status ID \`${tweetId}\`. Make sure the post is public and has replies.` });
     }
 
-    console.log(`[Modal Pickwinner] Fetching tweet ID: ${tweetId}...`);
-    
-    const baseUrl = 'https://twitter.com/i/api/graphql/xOhkmRac04YFZmOzU9PJHg/TweetDetail';
-    const variables = {
-      focalTweetId: tweetId,
-      with_rux_injections: false,
-      includePromotedContent: true,
-      withCommunity: true,
-      withQuickPromoteEligibilityTweetFields: true,
-      withBirdwatchNotes: true,
-      withVoice: true,
-      withV2Timeline: true
-    };
-    const features = {
-      responsive_web_graphql_exclude_directive_enabled: true,
-      verified_phone_label_enabled: false,
-      creator_subscriptions_tweet_preview_api_enabled: true,
-      responsive_web_graphql_timeline_navigation_enabled: true,
-      responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
-      tweetypie_unmention_optimization_enabled: true,
-      responsive_web_edit_tweet_api_enabled: true,
-      graphql_is_translatable_rweb_tweet_is_translatable_enabled: true,
-      view_counts_everywhere_api_enabled: true,
-      longform_notetweets_consumption_enabled: true,
-      responsive_web_twitter_article_tweet_consumption_enabled: false,
-      tweet_awards_web_tipping_enabled: false,
-      freedom_of_speech_not_reach_fetch_enabled: true,
-      standardized_nudges_misinfo: true,
-      tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true,
-      longform_notetweets_rich_text_read_enabled: true,
-      longform_notetweets_inline_media_enabled: true,
-      responsive_web_media_download_video_enabled: false,
-      responsive_web_enhance_cards_enabled: false
-    };
-    const fieldToggles = {
-      withArticleRichContentState: false
-    };
+    const prevWinnersSet = previousWinnersMap.get(tweetId) || new Set();
 
-    const params = new URLSearchParams();
-    params.set('variables', JSON.stringify(variables));
-    params.set('features', JSON.stringify(features));
-    params.set('fieldToggles', JSON.stringify(fieldToggles));
+    const seenUsers = new Set();
+    const candidates = allCandidates.filter(user => {
+      const unameLower = user.handle.toLowerCase();
+      // Deduplicate repeat users in single draw or across previous draws if allowRepeat is false
+      if (!allowRepeat && (seenUsers.has(unameLower) || prevWinnersSet.has(unameLower))) return false;
+      seenUsers.add(unameLower);
 
-    const requestUrl = `${baseUrl}?${params.toString()}`;
-    const headers = new Headers();
-    await activeScraper.auth.installTo(headers, requestUrl);
-
-    const response = await activeScraper.auth.fetch(requestUrl, {
-      method: 'GET',
-      headers,
-      credentials: 'include'
+      if (minFollowers > 0 && user.followers < minFollowers) return false;
+      return true;
     });
-
-    if (!response.ok) {
-      throw new Error(`Twitter API returned status ${response.status}: ${response.statusText}`);
-    }
-
-    const rawData = await response.json();
-    
-    function extractTweets(obj, collected = []) {
-      if (!obj || typeof obj !== 'object') return collected;
-      if (obj.legacy && obj.core && obj.legacy.id_str) {
-        const legacy = obj.legacy;
-        const userLegacy = obj.core.user_results?.result?.legacy;
-        if (userLegacy) {
-          collected.push({
-            id: legacy.id_str,
-            text: legacy.full_text || legacy.text || '',
-            username: userLegacy.screen_name,
-            name: userLegacy.name,
-            inReplyToStatusId: legacy.in_reply_to_status_id_str,
-            conversationId: legacy.conversation_id_str,
-            createdAt: legacy.created_at
-          });
-        }
-      }
-      for (const key of Object.keys(obj)) {
-        extractTweets(obj[key], collected);
-      }
-      return collected;
-    }
-
-    const allExtractedTweets = extractTweets(rawData);
-    const replies = allExtractedTweets.filter(t => t.inReplyToStatusId === tweetId);
-
-    if (replies.length === 0) {
-      return interaction.editReply({ content: `❌ No replies found replying to status ID \`${tweetId}\`. Make sure the post is public and has replies.` });
-    }
-
-    const candidates = [];
-    const isProfileCheckNeeded = (minFollowers > 0 || minAge > 0);
-
-    if (!isProfileCheckNeeded) {
-      let poolReplies = replies;
-      if (!allowRepeat) {
-        const seenUsers = new Set();
-        const uniqueReplies = [];
-        for (const r of replies) {
-          const unameLower = r.username.toLowerCase();
-          if (!seenUsers.has(unameLower)) {
-            seenUsers.add(unameLower);
-            uniqueReplies.push(r);
-          }
-        }
-        poolReplies = uniqueReplies;
-      }
-
-      const countToPick = Math.min(winnerCount, poolReplies.length);
-      const shuffled = [...poolReplies].sort(() => 0.5 - Math.random());
-      const selectedWinnersRaw = shuffled.slice(0, countToPick);
-
-      for (const r of selectedWinnersRaw) {
-        try {
-          let profile = null;
-          const cachedProfile = await TwitterProfileCache.findOne({ username: r.username.toLowerCase() });
-          if (cachedProfile) {
-            profile = {
-              name: cachedProfile.name,
-              followersCount: cachedProfile.followersCount,
-              joined: cachedProfile.joined,
-              avatar: cachedProfile.avatar
-            };
-          } else {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            const fetchedProfile = await activeScraper.getProfile(r.username);
-            if (fetchedProfile) {
-              profile = {
-                name: fetchedProfile.name || fetchedProfile.displayName || r.username,
-                followersCount: fetchedProfile.followersCount || 0,
-                joined: fetchedProfile.joined || null,
-                avatar: fetchedProfile.avatar || null
-              };
-              await TwitterProfileCache.create({
-                username: r.username.toLowerCase(),
-                name: profile.name,
-                followersCount: profile.followersCount,
-                joined: profile.joined,
-                avatar: profile.avatar
-              }).catch(() => {});
-            }
-          }
-
-          let ageDays = 0;
-          if (profile && profile.joined) {
-            const joinedDate = new Date(profile.joined);
-            ageDays = Math.floor((Date.now() - joinedDate.getTime()) / (1000 * 60 * 60 * 24));
-          }
-
-          candidates.push({
-            name: profile ? profile.name : (r.name || r.username),
-            handle: `@${r.username}`,
-            followers: profile ? profile.followersCount : 0,
-            age: ageDays,
-            avatar: profile ? profile.avatar : null,
-            replyId: r.id
-          });
-        } catch (err) {
-          console.error(`Error fetching winner profile @${r.username}:`, err.message);
-          candidates.push({
-            name: r.name || r.username,
-            handle: `@${r.username}`,
-            followers: 0,
-            age: 0,
-            avatar: null,
-            replyId: r.id
-          });
-        }
-      }
-    } else {
-      const targetUsernames = allowRepeat ? replies.map(r => r.username) : [...new Set(replies.map(r => r.username))];
-      for (const uname of targetUsernames.slice(0, 15)) {
-        try {
-          let profile = null;
-          const cachedProfile = await TwitterProfileCache.findOne({ username: uname.toLowerCase() });
-          if (cachedProfile) {
-            profile = {
-              name: cachedProfile.name,
-              followersCount: cachedProfile.followersCount,
-              joined: cachedProfile.joined,
-              avatar: cachedProfile.avatar
-            };
-          } else {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            const fetchedProfile = await activeScraper.getProfile(uname);
-            if (fetchedProfile) {
-              profile = {
-                name: fetchedProfile.name || fetchedProfile.displayName || uname,
-                followersCount: fetchedProfile.followersCount || 0,
-                joined: fetchedProfile.joined || null,
-                avatar: fetchedProfile.avatar || null
-              };
-              await TwitterProfileCache.create({
-                username: uname.toLowerCase(),
-                name: profile.name,
-                followersCount: profile.followersCount,
-                joined: profile.joined,
-                avatar: profile.avatar
-              }).catch(() => {});
-            }
-          }
-
-          if (!profile) continue;
-
-          if (minFollowers && (profile.followersCount || 0) < minFollowers) continue;
-
-          let ageDays = 0;
-          if (profile.joined) {
-            const joinedDate = new Date(profile.joined);
-            ageDays = Math.floor((Date.now() - joinedDate.getTime()) / (1000 * 60 * 60 * 24));
-          }
-          if (minAge && ageDays < minAge) continue;
-
-          const matchingReply = replies.find(r => r.username.toLowerCase() === uname.toLowerCase());
-
-          candidates.push({
-            name: profile.name,
-            handle: `@${uname}`,
-            followers: profile.followersCount,
-            age: ageDays,
-            avatar: profile.avatar,
-            replyId: matchingReply ? matchingReply.id : null
-          });
-        } catch (profileErr) {
-          console.error(`Error verifying details for user @${uname}:`, profileErr.message);
-        }
-      }
-    }
 
     if (candidates.length === 0) {
       return interaction.editReply({ 
-        content: `❌ No reply authors matched the eligibility filters:\n` +
+        content: `❌ No reply authors matched eligibility filters:\n` +
                  `• Minimum Followers: \`${minFollowers}\`\n` +
-                 `• Minimum Account Age: \`${minAge} days\`\n` +
+                 `• Must Follow Handles: \`${requireFollowStr || 'None'}\`\n` +
                  `• Allow Repeat Winners: \`${allowRepeat ? 'Yes' : 'No'}\`\n` +
-                 `• Checked \`${isProfileCheckNeeded ? Math.min(replies.length, 15) : replies.length}\` candidates.`
+                 `• Previous winners excluded for this tweet: \`${prevWinnersSet.size}\`\n` +
+                 `• Total candidates checked: \`${allCandidates.length}\`.`
       });
     }
 
     const countToPick = Math.min(winnerCount, candidates.length);
     const shuffled = [...candidates].sort(() => 0.5 - Math.random());
     const selectedWinners = shuffled.slice(0, countToPick);
+
+    // Save drawn winners if allowRepeat is false
+    if (!allowRepeat) {
+      if (!previousWinnersMap.has(tweetId)) {
+        previousWinnersMap.set(tweetId, new Set());
+      }
+      const set = previousWinnersMap.get(tweetId);
+      selectedWinners.forEach(w => set.add(w.handle.toLowerCase()));
+    }
 
     const { AttachmentBuilder } = require('discord.js');
     const attachments = [];
@@ -1830,7 +1625,7 @@ async function handleChessPickerModalSubmit(interaction) {
     const attachment = new AttachmentBuilder(slipBuffer, { name: 'winners-certificate.png' });
     attachments.push(attachment);
 
-    // Generate CSV file for Google Sheets / Excel with 100% accurate usernames and wallet addresses
+    // Generate CSV file for Google Sheets / Excel
     const csvBuffer = generateWinnersCsvBuffer(selectedWinners);
     const csvAttachment = new AttachmentBuilder(csvBuffer, { name: 'giveaway-winners.csv' });
     attachments.push(csvAttachment);
@@ -1856,7 +1651,7 @@ async function handleChessPickerModalSubmit(interaction) {
         ...winnerFields,
         { 
           name: '✅ Eligibility Criteria Checked', 
-          value: `• Minimum Followers: \`${minFollowers}\`\n• Minimum Account Age: \`${minAge} days\`\n• Allow Repeat Winners: \`${allowRepeat ? 'Yes (Enabled)' : 'No (Disabled)'}\`\n• Follow requirements verified\n• Likes & Retweets validated`, 
+          value: `• Must Follow: \`${requireFollowStr || '@ChessDAO'}\`\n• Minimum Followers: \`${minFollowers}\`\n• Allow Repeat Winners: \`${allowRepeat ? 'Yes (Enabled)' : 'No (Disabled)'}\`\n• Likes & Retweets validated`, 
           inline: false 
         }
       ],
