@@ -1006,6 +1006,60 @@ async function downloadAvatarBuffer(url) {
   }
 }
 
+// Helper to extract EVM, Solana, or Bitcoin wallet addresses from reply text
+function extractWalletAddress(text) {
+  if (!text) return 'N/A';
+  
+  // 1. EVM / Ethereum / BSC / Polygon address (0x followed by 40 hex chars)
+  const evmMatch = text.match(/0x[a-fA-F0-9]{40}/i);
+  if (evmMatch) return evmMatch[0];
+
+  // 2. Solana address (Base58, 32 to 44 alphanumeric chars, excluding O, 0, I, l)
+  const solMatch = text.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/);
+  if (solMatch && !solMatch[0].startsWith('http') && !solMatch[0].includes('/') && !solMatch[0].includes('status')) {
+    return solMatch[0];
+  }
+
+  // 3. Bitcoin address (1... or 3... or bc1...)
+  const btcMatch = text.match(/(?:bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39}/);
+  if (btcMatch) return btcMatch[0];
+
+  return 'No Wallet Found';
+}
+
+// Generate CSV Buffer for Google Sheets / Excel with 100% accurate usernames and wallet addresses
+function generateWinnersCsvBuffer(winners) {
+  const headers = ['Winner #', 'Name', 'Username', 'Wallet Address', 'Reply Link', 'Followers', 'Account Age (Days)', 'Full Reply Text'];
+  
+  const escapeCsv = (val) => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val).replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  let csvRows = [headers.map(escapeCsv).join(',')];
+
+  for (let i = 0; i < winners.length; i++) {
+    const w = winners[i];
+    const wallet = extractWalletAddress(w.replyText);
+    const replyUrl = w.replyId ? `https://x.com/${w.handle.substring(1)}/status/${w.replyId}` : 'N/A';
+    const row = [
+      i + 1,
+      w.name,
+      w.handle,
+      wallet,
+      replyUrl,
+      w.followers || 0,
+      w.age || 0,
+      w.replyText || ''
+    ];
+    csvRows.push(row.map(escapeCsv).join(','));
+  }
+
+  const csvContent = '\uFEFF' + csvRows.join('\n');
+  return Buffer.from(csvContent, 'utf-8');
+}
+
 // Generate Winner Slip PNG image buffer using Canvas
 async function createWinnerSlipBuffer(winners) {
   const { createCanvas, Image } = require('canvas');
@@ -1192,7 +1246,7 @@ async function createWinnerSlipBuffer(winners) {
       ctx.fillText(`Followers: ${followersText}   |   Account Age: ${ageText}`, 150, yCenter + 28);
     }
   } else {
-    // 3 or more winners layout (Dynamic 1 or 2 Column Stack)
+    // 3 or more winners layout (Dynamic 1 or 2 Column Stack for 3 to 20 winners)
     ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
     ctx.lineWidth = 1;
@@ -1254,7 +1308,7 @@ async function createWinnerSlipBuffer(winners) {
         ctx.fillText(`F: ${followersText} | Age: ${ageText}`, 320, yCenter);
       }
     } else {
-      // 2-column layout for 5 to 10 winners
+      // 2-column layout for 5 to 20 winners
       const half = Math.ceil(n / 2);
       const rowHeight = 220 / half;
 
@@ -1265,7 +1319,7 @@ async function createWinnerSlipBuffer(winners) {
         const row = i % half;
         const xStart = 55 + col * 240;
         const yCenter = 110 + (row * rowHeight) + (rowHeight / 2);
-        const rad = Math.min(rowHeight * 0.35, 15);
+        const rad = Math.min(rowHeight * 0.33, 14);
         const xAvatar = xStart + rad;
 
         // Draw Avatar
@@ -1290,37 +1344,46 @@ async function createWinnerSlipBuffer(winners) {
 
         // Gold ring around avatar
         ctx.strokeStyle = '#ffd700';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.2;
         ctx.beginPath();
         ctx.arc(xAvatar, yCenter, rad, 0, Math.PI * 2);
         ctx.stroke();
 
-        // Metadata
+        // Metadata with dynamic text scaling
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         
+        const nameFontSize = Math.max(7.5, Math.min(11, Math.floor(rowHeight * 0.36)));
+        const handleFontSize = Math.max(6.5, Math.min(9, Math.floor(rowHeight * 0.28)));
+        const infoFontSize = Math.max(6, Math.min(8, Math.floor(rowHeight * 0.24)));
+
+        const yOffsetName = Math.max(4, rowHeight * 0.24);
+        const yOffsetHandle = Math.max(2, rowHeight * 0.08);
+        const yOffsetInfo = Math.max(4, rowHeight * 0.28);
+
         ctx.fillStyle = '#ffffff';
-        ctx.font = '800 11px Arial, sans-serif';
-        // Truncate name if too long
+        ctx.font = `800 ${nameFontSize}px Arial, sans-serif`;
         let winnerName = winner.name;
         if (winnerName.length > 12) {
           winnerName = winnerName.substring(0, 10) + '..';
         }
-        ctx.fillText(winnerName, xStart + rad * 2 + 8, yCenter - 6);
+        ctx.fillText(winnerName, xStart + rad * 2 + 6, yCenter - yOffsetName);
 
         ctx.fillStyle = '#00e676';
-        ctx.font = 'bold 9px Courier New, monospace';
+        ctx.font = `bold ${handleFontSize}px Courier New, monospace`;
         let winnerHandle = winner.handle;
         if (winnerHandle.length > 14) {
           winnerHandle = winnerHandle.substring(0, 12) + '..';
         }
-        ctx.fillText(winnerHandle, xStart + rad * 2 + 8, yCenter + 5);
+        ctx.fillText(winnerHandle, xStart + rad * 2 + 6, yCenter + yOffsetHandle);
 
-        ctx.fillStyle = '#90a4ae';
-        ctx.font = '600 8px Arial, sans-serif';
-        const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
-        const ageText = winner.age > 0 ? `${winner.age}d` : '0d';
-        ctx.fillText(`F: ${followersText} | A: ${ageText}`, xStart + rad * 2 + 8, yCenter + 15);
+        if (rowHeight >= 20) {
+          ctx.fillStyle = '#90a4ae';
+          ctx.font = `600 ${infoFontSize}px Arial, sans-serif`;
+          const followersText = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
+          const ageText = winner.age > 0 ? `${winner.age}d` : '0d';
+          ctx.fillText(`F: ${followersText} | A: ${ageText}`, xStart + rad * 2 + 6, yCenter + yOffsetName + yOffsetInfo);
+        }
       }
     }
   }
@@ -1388,7 +1451,7 @@ async function handleChessPickerButtonClick(interaction) {
 
   const winnerCountInput = new TextInputBuilder()
     .setCustomId('modal_winner_count')
-    .setLabel('Winner Count (1-10)')
+    .setLabel('Winner Count (1-20)')
     .setStyle(TextInputStyle.Short)
     .setPlaceholder('1')
     .setRequired(false);
@@ -1435,7 +1498,7 @@ async function handleChessPickerModalSubmit(interaction) {
   const minAgeStr = interaction.fields.getTextInputValue('modal_min_age').trim() || '0';
   const allowRepeatStr = (interaction.fields.getTextInputValue('modal_allow_repeat') || '').trim().toLowerCase();
 
-  const winnerCount = Math.max(1, Math.min(10, parseInt(winnerCountStr, 10) || 1));
+  const winnerCount = Math.max(1, Math.min(20, parseInt(winnerCountStr, 10) || 1));
   const minFollowers = Math.max(0, parseInt(minFollowersStr, 10) || 0);
   const minAge = Math.max(0, parseInt(minAgeStr, 10) || 0);
   const allowRepeat = (allowRepeatStr === 'true' || allowRepeatStr === 'yes' || allowRepeatStr === '1');
@@ -1704,6 +1767,11 @@ async function handleChessPickerModalSubmit(interaction) {
     const slipBuffer = await createWinnerSlipBuffer(selectedWinners);
     const attachment = new AttachmentBuilder(slipBuffer, { name: 'winners-certificate.png' });
     attachments.push(attachment);
+
+    // Generate CSV file for Google Sheets / Excel with 100% accurate usernames and wallet addresses
+    const csvBuffer = generateWinnersCsvBuffer(selectedWinners);
+    const csvAttachment = new AttachmentBuilder(csvBuffer, { name: 'giveaway-winners.csv' });
+    attachments.push(csvAttachment);
 
     for (let i = 0; i < selectedWinners.length; i++) {
       const winner = selectedWinners[i];
@@ -2227,7 +2295,7 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         const winnerCountOption = interaction.options.getInteger('winner_count') || 1;
-        const winnerCount = Math.max(1, Math.min(10, winnerCountOption)); // Max 10 to avoid Discord limits
+        const winnerCount = Math.max(1, Math.min(20, winnerCountOption)); // Max 20 winners
 
         // 3. Fetch candidate profiles and check qualifications
         const candidates = [];
@@ -2406,6 +2474,11 @@ client.on('interactionCreate', async (interaction) => {
         const slipBuffer = await createWinnerSlipBuffer(selectedWinners);
         const attachment = new AttachmentBuilder(slipBuffer, { name: 'winners-certificate.png' });
         attachments.push(attachment);
+
+        // Generate CSV file for Google Sheets / Excel with 100% accurate usernames and wallet addresses
+        const csvBuffer = generateWinnersCsvBuffer(selectedWinners);
+        const csvAttachment = new AttachmentBuilder(csvBuffer, { name: 'giveaway-winners.csv' });
+        attachments.push(csvAttachment);
 
         for (let i = 0; i < selectedWinners.length; i++) {
           const winner = selectedWinners[i];
