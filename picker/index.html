@@ -66,8 +66,8 @@
             <input type="text" id="require-follow" value="@ChessDAO" placeholder="@ChessDAO, @Partner">
           </div>
           <div class="form-group">
-            <label for="winner-count">Winner Count (1 - 50)</label>
-            <input type="number" id="winner-count" min="1" max="50" value="1">
+            <label for="winner-count">Winner Count (1 - 25)</label>
+            <input type="number" id="winner-count" min="1" max="25" value="1">
           </div>
         </div>
 
@@ -137,19 +137,12 @@
         <!-- Winner Certificate Card -->
         <div id="winner-card" class="glass-panel hidden">
           <div class="success-header">
-            <span class="success-badge">🎉 WINNER SELECTED 🎉</span>
+            <span id="success-badge" class="success-badge">🎉 WINNER SELECTED 🎉</span>
           </div>
 
-          <div class="winner-info-display">
-            <div id="winner-avatar">👑</div>
-            <div class="winner-meta">
-              <h3 id="winner-name">Magnus Carlsen</h3>
-              <p id="winner-handle">@MagnusCarlsen</p>
-              <div class="winner-stats">
-                <span id="stat-followers">👥 2.4M followers</span>
-                <span id="stat-age">📅 4,200 days old</span>
-              </div>
-            </div>
+          <!-- Dynamic Winner Profile Cards Grid -->
+          <div id="winners-grid-container" class="winners-grid-container">
+            <!-- Dynamically populated winner profile cards -->
           </div>
 
           <!-- Hidden Canvas for Certificate Generation -->

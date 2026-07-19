@@ -1,25 +1,35 @@
-// Mock Web3 Candidate database
+// Mock Web3 Candidate database (30 candidates fully qualified)
 const mockCandidatesPool = [
-  { name: "Satoshi Nakamoto", handle: "@satoshi_99", followers: 4500, age: 360, likes: true, rts: true },
-  { name: "Vitalik Buterin", handle: "@vitalik_eth", followers: 4900, age: 340, likes: true, rts: true },
-  { name: "Web3 Degenerate", handle: "@degen_king", followers: 1200, age: 180, likes: true, rts: true },
-  { name: "Chess Grandmaster", handle: "@chess_gm_xyz", followers: 3200, age: 290, likes: true, rts: true },
-  { name: "Alpha Finder", handle: "@alpha_nft_finder", followers: 850, age: 95, likes: true, rts: true },
-  { name: "Crypto Knight", handle: "@crypto_knight_dao", followers: 1500, age: 120, likes: true, rts: true },
-  { name: "Early NFT Collector", handle: "@early_nft_finds", followers: 2400, age: 210, likes: true, rts: true },
-  { name: "DAO Contributor", handle: "@chess_dao_cont", followers: 600, age: 45, likes: true, rts: false },
-  { name: "Solana Bull", handle: "@sol_bull_run", followers: 1800, age: 150, likes: true, rts: true },
-  { name: "Ethereum Whale", handle: "@eth_whale_9", followers: 3500, age: 310, likes: true, rts: true },
-  { name: "NFT Hunter", handle: "@hunter_nft_project", followers: 980, age: 80, likes: false, rts: true },
-  { name: "Checkmate Alpha", handle: "@checkmate_nft", followers: 2200, age: 250, likes: true, rts: true },
-  { name: "Degen Gambler", handle: "@degen_gambler_x", followers: 450, age: 60, likes: true, rts: true },
-  { name: "GM Hikaru fan", handle: "@hikaru_fan_club", followers: 1100, age: 140, likes: true, rts: true },
-  { name: "Chess King", handle: "@chess_king_nft", followers: 1350, age: 115, likes: true, rts: true },
-  { name: "Tactical Degen", handle: "@tactical_degen", followers: 750, age: 70, likes: true, rts: true },
-  { name: "Rook Collector", handle: "@rook_collector", followers: 1650, age: 195, likes: true, rts: true },
-  { name: "Pawn to Queen", handle: "@pawn_to_queen", followers: 2050, age: 225, likes: true, rts: true },
-  { name: "Endgame Strategy", handle: "@endgame_strat", followers: 2800, age: 275, likes: true, rts: true },
-  { name: "Fischer Fanatic", handle: "@fischer_fan", followers: 550, age: 50, likes: true, rts: true }
+  { name: "Satoshi Nakamoto", handle: "@satoshi_99", followers: 4500, age: 360, likes: true, rts: true, avatar: "https://unavatar.io/x/satoshi_99" },
+  { name: "Vitalik Buterin", handle: "@vitalik_eth", followers: 4900, age: 340, likes: true, rts: true, avatar: "https://unavatar.io/x/vitalik_eth" },
+  { name: "Web3 Degenerate", handle: "@degen_king", followers: 1200, age: 180, likes: true, rts: true, avatar: "https://unavatar.io/x/degen_king" },
+  { name: "Chess Grandmaster", handle: "@chess_gm_xyz", followers: 3200, age: 290, likes: true, rts: true, avatar: "https://unavatar.io/x/chess_gm_xyz" },
+  { name: "Alpha Finder", handle: "@alpha_nft_finder", followers: 850, age: 95, likes: true, rts: true, avatar: "https://unavatar.io/x/alpha_nft_finder" },
+  { name: "Crypto Knight", handle: "@crypto_knight_dao", followers: 1500, age: 120, likes: true, rts: true, avatar: "https://unavatar.io/x/crypto_knight_dao" },
+  { name: "Early NFT Collector", handle: "@early_nft_finds", followers: 2400, age: 210, likes: true, rts: true, avatar: "https://unavatar.io/x/early_nft_finds" },
+  { name: "DAO Contributor", handle: "@chess_dao_cont", followers: 600, age: 45, likes: true, rts: true, avatar: "https://unavatar.io/x/chess_dao_cont" },
+  { name: "Solana Bull", handle: "@sol_bull_run", followers: 1800, age: 150, likes: true, rts: true, avatar: "https://unavatar.io/x/sol_bull_run" },
+  { name: "Ethereum Whale", handle: "@eth_whale_9", followers: 3500, age: 310, likes: true, rts: true, avatar: "https://unavatar.io/x/eth_whale_9" },
+  { name: "NFT Hunter", handle: "@hunter_nft_project", followers: 980, age: 80, likes: true, rts: true, avatar: "https://unavatar.io/x/hunter_nft_project" },
+  { name: "Checkmate Alpha", handle: "@checkmate_nft", followers: 2200, age: 250, likes: true, rts: true, avatar: "https://unavatar.io/x/checkmate_nft" },
+  { name: "Degen Gambler", handle: "@degen_gambler_x", followers: 450, age: 60, likes: true, rts: true, avatar: "https://unavatar.io/x/degen_gambler_x" },
+  { name: "GM Hikaru fan", handle: "@hikaru_fan_club", followers: 1100, age: 140, likes: true, rts: true, avatar: "https://unavatar.io/x/hikaru_fan_club" },
+  { name: "Chess King", handle: "@chess_king_nft", followers: 1350, age: 115, likes: true, rts: true, avatar: "https://unavatar.io/x/chess_king_nft" },
+  { name: "Tactical Degen", handle: "@tactical_degen", followers: 750, age: 70, likes: true, rts: true, avatar: "https://unavatar.io/x/tactical_degen" },
+  { name: "Rook Collector", handle: "@rook_collector", followers: 1650, age: 195, likes: true, rts: true, avatar: "https://unavatar.io/x/rook_collector" },
+  { name: "Pawn to Queen", handle: "@pawn_to_queen", followers: 2050, age: 225, likes: true, rts: true, avatar: "https://unavatar.io/x/pawn_to_queen" },
+  { name: "Endgame Strategy", handle: "@endgame_strat", followers: 2800, age: 275, likes: true, rts: true, avatar: "https://unavatar.io/x/endgame_strat" },
+  { name: "Fischer Fanatic", handle: "@fischer_fan", followers: 550, age: 50, likes: true, rts: true, avatar: "https://unavatar.io/x/fischer_fan" },
+  { name: "Magnus Carlsen", handle: "@MagnusCarlsen", followers: 4800, age: 420, likes: true, rts: true, avatar: "https://unavatar.io/x/MagnusCarlsen" },
+  { name: "Hikaru Nakamura", handle: "@GMHikaru", followers: 4600, age: 390, likes: true, rts: true, avatar: "https://unavatar.io/x/GMHikaru" },
+  { name: "Fabiano Caruana", handle: "@FabianoCaruana", followers: 2900, age: 280, likes: true, rts: true, avatar: "https://unavatar.io/x/FabianoCaruana" },
+  { name: "Alireza Firouzja", handle: "@AlirezaFirouzja", followers: 2100, age: 210, likes: true, rts: true, avatar: "https://unavatar.io/x/AlirezaFirouzja" },
+  { name: "Ding Liren", handle: "@DingLirenChess", followers: 1900, age: 190, likes: true, rts: true, avatar: "https://unavatar.io/x/DingLirenChess" },
+  { name: "Gukesh D", handle: "@GukeshD", followers: 3100, age: 260, likes: true, rts: true, avatar: "https://unavatar.io/x/GukeshD" },
+  { name: "Praggnanandhaa R", handle: "@rpraggnanandhaa", followers: 3400, age: 300, likes: true, rts: true, avatar: "https://unavatar.io/x/rpraggnanandhaa" },
+  { name: "Anish Giri", handle: "@AnishGiri", followers: 4200, age: 370, likes: true, rts: true, avatar: "https://unavatar.io/x/AnishGiri" },
+  { name: "Levon Aronian", handle: "@LevAronian", followers: 1700, age: 160, likes: true, rts: true, avatar: "https://unavatar.io/x/LevAronian" },
+  { name: "Wesley So", handle: "@GMWesleySo123", followers: 1400, age: 130, likes: true, rts: true, avatar: "https://unavatar.io/x/GMWesleySo123" }
 ];
 
 // Document Elements
@@ -269,10 +279,11 @@ function startWinnerDraw() {
         return {
           name: name,
           handle: cleanHandle,
-          followers: Math.floor(Math.random() * 4800) + 50,
-          age: Math.floor(Math.random() * 300) + 10,
-          likes: Math.random() > 0.1,
-          rts: Math.random() > 0.1
+          followers: Math.floor(Math.random() * 4800) + 150,
+          age: Math.floor(Math.random() * 300) + 30,
+          likes: true,
+          rts: true,
+          avatar: "https://unavatar.io/x/" + cleanHandle.substring(1)
         };
       });
   } else {
@@ -325,7 +336,8 @@ function startWinnerDraw() {
   });
 
   const winnerCountInput = document.getElementById('winner-count');
-  const winnerCount = Math.max(1, Math.min(50, parseInt(winnerCountInput ? winnerCountInput.value : 1) || 1));
+  // Maximum winner count is capped at 25
+  const winnerCount = Math.max(1, Math.min(25, parseInt(winnerCountInput ? winnerCountInput.value : 1) || 1));
 
   const countToPick = Math.min(winnerCount, filtered.length);
   const shuffled = [...filtered].sort(() => 0.5 - Math.random());
@@ -373,23 +385,45 @@ function startWinnerDraw() {
 function showWinners(winners) {
   currentWinners = Array.isArray(winners) ? winners : [winners];
   
-  if (currentWinners.length === 1) {
-    winnerName.textContent = currentWinners[0].name;
-    winnerHandle.textContent = currentWinners[0].handle;
-    statFollowers.textContent = `👥 ${currentWinners[0].followers.toLocaleString()} followers`;
-    statAge.textContent = `📅 ${currentWinners[0].age} days old`;
+  const successBadge = document.getElementById('success-badge');
+  if (successBadge) {
+    successBadge.textContent = currentWinners.length === 1 ? '🎉 WINNER SELECTED 🎉' : `🎉 ${currentWinners.length} WINNERS SELECTED 🎉`;
+  }
 
-    const hue = (currentWinners[0].name.charCodeAt(0) * 47) % 360;
-    winnerAvatar.style.background = `hsl(${hue}, 80%, 45%)`;
-    winnerAvatar.textContent = currentWinners[0].name.charAt(0).toUpperCase();
-  } else {
-    winnerName.textContent = `🏆 ${currentWinners.length} Winners Selected!`;
-    winnerHandle.textContent = currentWinners.map(w => w.handle).slice(0, 3).join(', ') + (currentWinners.length > 3 ? '...' : '');
-    statFollowers.textContent = `👥 Multi-Winner Draw`;
-    statAge.textContent = `📅 ${new Date().toLocaleDateString()}`;
+  const gridContainer = document.getElementById('winners-grid-container');
+  if (gridContainer) {
+    gridContainer.innerHTML = '';
+    currentWinners.forEach((winner, idx) => {
+      const card = document.createElement('div');
+      card.className = 'winner-profile-card';
 
-    winnerAvatar.style.background = `linear-gradient(135deg, #ffd700, #ffab00)`;
-    winnerAvatar.textContent = '👑';
+      const hue = (winner.name.charCodeAt(0) * 47) % 360;
+      const initial = winner.name.charAt(0).toUpperCase();
+      const avatarHtml = winner.avatar 
+        ? `<img src="${winner.avatar}" alt="${winner.name}" class="winner-avatar-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+           <div class="winner-avatar-badge" style="background: hsl(${hue}, 80%, 45%); display: none;">${initial}</div>`
+        : `<div class="winner-avatar-badge" style="background: hsl(${hue}, 80%, 45%);">${initial}</div>`;
+
+      const followersFormatted = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
+      const ageFormatted = winner.age > 0 ? `${winner.age}d` : '0d';
+      const cleanHandle = winner.handle.startsWith('@') ? winner.handle.substring(1) : winner.handle;
+
+      card.innerHTML = `
+        <div class="winner-rank-badge">#${idx + 1}</div>
+        <div class="winner-avatar-wrapper">
+          ${avatarHtml}
+        </div>
+        <div class="winner-card-meta">
+          <h4 class="winner-card-name" title="${winner.name}">${winner.name}</h4>
+          <a href="https://x.com/${cleanHandle}" target="_blank" rel="noopener noreferrer" class="winner-card-handle">${winner.handle}</a>
+          <div class="winner-card-stats">
+            <span class="w-stat">👥 ${followersFormatted}</span>
+            <span class="w-stat">📅 ${ageFormatted}</span>
+          </div>
+        </div>
+      `;
+      gridContainer.appendChild(card);
+    });
   }
 
   generateWinnerSlipCanvas(currentWinners);

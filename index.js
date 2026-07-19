@@ -2226,7 +2226,7 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         const winnerCountOption = interaction.options.getInteger('winner_count') || 1;
-        const winnerCount = Math.max(1, Math.min(50, winnerCountOption)); // Max 50 winners
+        const winnerCount = Math.max(1, Math.min(25, winnerCountOption)); // Max 25 winners
 
         // 3. Fetch candidate profiles and check qualifications
         const candidates = [];
@@ -2311,7 +2311,8 @@ client.on('interactionCreate', async (interaction) => {
         } else {
           // Profile requirements specified: check cache first, then fetch profiles with rate-limit protection delay
           const targetUsernames = allowRepeat ? replies.map(r => r.username) : [...new Set(replies.map(r => r.username))];
-          for (const uname of targetUsernames.slice(0, 15)) {
+          const scanLimit = Math.min(targetUsernames.length, Math.max(winnerCount * 2, 50));
+          for (const uname of targetUsernames.slice(0, scanLimit)) {
             try {
               let profile = null;
               
