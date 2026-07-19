@@ -12,7 +12,7 @@ const config = {
 conn.on('ready', () => {
   console.log('SSH connection established to VPS. Fetching PM2 logs...');
   
-  conn.exec('pm2 logs twitter-tracker --lines 50 --raw', (err, stream) => {
+  conn.exec('pm2 list && pm2 logs chess-picker-bot --lines 50 --raw', (err, stream) => {
     if (err) {
       console.error('Error executing logs command:', err);
       conn.end();

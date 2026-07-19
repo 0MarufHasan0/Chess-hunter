@@ -2784,7 +2784,7 @@ process.on('SIGINT', () => {
 
 // Start HTTP Web Server to serve Web Picker and Real X (Twitter) API Endpoint
 const http = require('http');
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3005;
 
 const webServer = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -2842,6 +2842,16 @@ const webServer = http.createServer(async (req, res) => {
   } else {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not Found');
+  }
+});
+
+webServer.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    const fallbackPort = 3006;
+    console.warn(`Port in use, trying fallback port ${fallbackPort}...`);
+    webServer.listen(fallbackPort);
+  } else {
+    console.error('Web server error:', err.message);
   }
 });
 
