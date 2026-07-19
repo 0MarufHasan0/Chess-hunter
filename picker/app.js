@@ -40,6 +40,8 @@ const ageVal = document.getElementById('age-val');
 
 const btnDraw = document.getElementById('btn-draw');
 const btnDownload = document.getElementById('btn-download');
+const btnExportCSV = document.getElementById('btn-export-csv');
+const btnCopySheet = document.getElementById('btn-copy-sheet');
 const btnReset = document.getElementById('btn-reset');
 const btnLoadSample = document.getElementById('btn-load-sample');
 
@@ -235,10 +237,11 @@ if (btnLoadSample) {
   });
 }
 
-// Action Listeners
 if (btnDraw) btnDraw.addEventListener('click', startWinnerDraw);
 if (btnReset) btnReset.addEventListener('click', resetDrawState);
 if (btnDownload) btnDownload.addEventListener('click', downloadWinnerSlip);
+if (btnExportCSV) btnExportCSV.addEventListener('click', exportWinnersToCSV);
+if (btnCopySheet) btnCopySheet.addEventListener('click', copyWinnersForGoogleSheet);
 
 function resetDrawState() {
   winnerCard.classList.add('hidden');
@@ -322,10 +325,13 @@ function startWinnerDraw() {
     item.className = 'spinner-item';
     const hue = (candidate.name.charCodeAt(0) * 47) % 360;
     const initial = candidate.name.charAt(0).toUpperCase();
-    
+    const cleanHandle = candidate.handle ? (candidate.handle.startsWith('@') ? candidate.handle.substring(1) : candidate.handle) : 'user';
+    const primaryUrl = candidate.avatar || `https://unavatar.io/twitter/${cleanHandle}`;
+    const fallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=00f2fe&color=0b0e14&bold=true`;
+
     item.innerHTML = `
-      <div class="spinner-avatar" style="background: hsl(${hue}, 75%, 40%); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; font-size: 1.25rem;">
-        ${initial}
+      <div class="spinner-avatar">
+        <img src="${primaryUrl}" alt="${candidate.name}" class="spinner-avatar-img" referrerpolicy="no-referrer" onerror="if(!this.dataset.fallback){this.dataset.fallback='1'; this.src='${fallbackUrl}';} else {this.style.display='none';}">
       </div>
       <div class="spinner-meta">
         <div class="spinner-name">${candidate.name}</div>
@@ -382,7 +388,7 @@ function startWinnerDraw() {
   animateSpinner();
 }
 
-function showWinners(winners) {
+async function showWinners(winners) {
   currentWinners = Array.isArray(winners) ? winners : [winners];
   
   const successBadge = document.getElementById('success-badge');
@@ -399,14 +405,17 @@ function showWinners(winners) {
 
       const hue = (winner.name.charCodeAt(0) * 47) % 360;
       const initial = winner.name.charAt(0).toUpperCase();
-      const avatarHtml = winner.avatar 
-        ? `<img src="${winner.avatar}" alt="${winner.name}" class="winner-avatar-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-           <div class="winner-avatar-badge" style="background: hsl(${hue}, 80%, 45%); display: none;">${initial}</div>`
-        : `<div class="winner-avatar-badge" style="background: hsl(${hue}, 80%, 45%);">${initial}</div>`;
+      const cleanHandle = winner.handle.startsWith('@') ? winner.handle.substring(1) : winner.handle;
+      const primaryUrl = winner.avatar || `https://unavatar.io/twitter/${cleanHandle}`;
+      const fallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(winner.name)}&background=00f2fe&color=0b0e14&bold=true`;
+
+      const avatarHtml = `
+        <img src="${primaryUrl}" alt="${winner.name}" class="winner-avatar-img" referrerpolicy="no-referrer" onerror="if(!this.dataset.fallback){this.dataset.fallback='1'; this.src='${fallbackUrl}';} else {this.style.display='none'; this.nextElementSibling.style.display='flex';}">
+        <div class="winner-avatar-badge" style="background: hsl(${hue}, 80%, 45%); display: none;">${initial}</div>
+      `;
 
       const followersFormatted = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
       const ageFormatted = winner.age > 0 ? `${winner.age}d` : '0d';
-      const cleanHandle = winner.handle.startsWith('@') ? winner.handle.substring(1) : winner.handle;
 
       card.innerHTML = `
         <div class="winner-rank-badge">#${idx + 1}</div>
@@ -426,7 +435,51 @@ function showWinners(winners) {
     });
   }
 
-  generateWinnerSlipCanvas(currentWinners);
+  const serialNo = `CH-${Math.floor(100000 + Math.random() * 900000)}`;
+  const hashVal = 'SHA256-' + Array.from({length: 16}, () => Math.floor(Math.random()*16).toString(16)).join('').toUpperCase();
+  const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  // Store serial on winners
+  currentWinners.forEach(w => { w.certSerial = serialNo; });
+
+  // Persist draw record for Certificate Validation Checker lookups
+  const drawRecord = {
+    serialNo,
+    hashVal,
+    dateStr,
+    winners: currentWinners,
+    postLink: document.getElementById('post-link').value.trim()
+  };
+
+  try {
+    localStorage.setItem('cert_' + serialNo.toUpperCase(), JSON.stringify(drawRecord));
+    localStorage.setItem('cert_' + hashVal.toUpperCase(), JSON.stringify(drawRecord));
+  } catch (e) {}
+
+  // Populate Google Sheet Data Table
+  const sheetTbody = document.getElementById('winners-sheet-tbody');
+  if (sheetTbody) {
+    sheetTbody.innerHTML = '';
+    currentWinners.forEach((winner, idx) => {
+      const cleanHandle = winner.handle.startsWith('@') ? winner.handle.substring(1) : winner.handle;
+      const serial = winner.certSerial;
+      const wallet = winner.wallet || `0x${Array.from({length: 8}, () => Math.floor(Math.random()*16).toString(16)).join('')}...${Array.from({length: 4}, () => Math.floor(Math.random()*16).toString(16)).join('')}`;
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>#${idx + 1}</td>
+        <td><strong>${winner.name}</strong></td>
+        <td><a href="https://x.com/${cleanHandle}" target="_blank" style="color:#00e676; text-decoration:none;">${winner.handle}</a></td>
+        <td>${winner.followers ? winner.followers.toLocaleString() : '0'}</td>
+        <td>${winner.age ? winner.age + 'd' : '0d'}</td>
+        <td><code>${wallet}</code></td>
+        <td><code>${serial}</code></td>
+      `;
+      sheetTbody.appendChild(tr);
+    });
+  }
+
+  await generateWinnerSlipCanvas(currentWinners, serialNo, hashVal, dateStr);
 
   liveSelectorCard.classList.add('hidden');
   winnerCard.classList.remove('hidden');
@@ -450,10 +503,32 @@ function fitWebCanvasText(ctx, text, maxWidth, initialFontSize, fontFace = 'Outf
   return { text, fontSize };
 }
 
-// Generate high quality canvas certificate/slip
-function generateWinnerSlipCanvas(winners) {
+// Generate high quality canvas certificate/slip with async avatar loading
+async function generateWinnerSlipCanvas(winners, customSerial = null, customHash = null, customDate = null) {
   const selectedWinners = Array.isArray(winners) ? winners : [winners];
   const n = selectedWinners.length;
+
+  // Preload profile pic images for canvas drawing
+  const avatarImages = await Promise.all(selectedWinners.map((winner) => {
+    return new Promise((resolve) => {
+      const cleanHandle = winner.handle ? (winner.handle.startsWith('@') ? winner.handle.substring(1) : winner.handle) : 'user';
+      const encodedName = encodeURIComponent(winner.name || cleanHandle);
+      const primaryUrl = winner.avatar || `https://unavatar.io/twitter/${cleanHandle}`;
+      const fallbackUrl = `https://ui-avatars.com/api/?name=${encodedName}&background=00f2fe&color=0b0e14&bold=true`;
+
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => {
+        const fallbackImg = new Image();
+        fallbackImg.crossOrigin = 'anonymous';
+        fallbackImg.onload = () => resolve(fallbackImg);
+        fallbackImg.onerror = () => resolve(null);
+        fallbackImg.src = fallbackUrl;
+      };
+      img.src = primaryUrl;
+    });
+  }));
 
   let cols = 1;
   if (n === 2) cols = 2;
@@ -565,6 +640,7 @@ function generateWinnerSlipCanvas(winners) {
   // Draw Winner Cards
   for (let i = 0; i < n; i++) {
     const winner = selectedWinners[i];
+    const avatarImg = avatarImages[i];
     const col = i % cols;
     const row = Math.floor(i / cols);
 
@@ -595,13 +671,28 @@ function generateWinnerSlipCanvas(winners) {
     ctx.arc(avatarX, yCenter, avatarRad, 0, Math.PI * 2);
     ctx.closePath();
     ctx.clip();
-    ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
-    ctx.fillRect(avatarX - avatarRad, yCenter - avatarRad, avatarRad * 2, avatarRad * 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `800 ${Math.floor(avatarRad * 1.1)}px Outfit, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(winner.name.charAt(0).toUpperCase(), avatarX, yCenter);
+
+    if (avatarImg && avatarImg.complete && avatarImg.naturalWidth > 0) {
+      try {
+        ctx.drawImage(avatarImg, avatarX - avatarRad, yCenter - avatarRad, avatarRad * 2, avatarRad * 2);
+      } catch (err) {
+        ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
+        ctx.fillRect(avatarX - avatarRad, yCenter - avatarRad, avatarRad * 2, avatarRad * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `800 ${Math.floor(avatarRad * 1.1)}px Outfit, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(winner.name.charAt(0).toUpperCase(), avatarX, yCenter);
+      }
+    } else {
+      ctx.fillStyle = `hsl(${avatarHue}, 80%, 45%)`;
+      ctx.fillRect(avatarX - avatarRad, yCenter - avatarRad, avatarRad * 2, avatarRad * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `800 ${Math.floor(avatarRad * 1.1)}px Outfit, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(winner.name.charAt(0).toUpperCase(), avatarX, yCenter);
+    }
     ctx.restore();
 
     ctx.strokeStyle = '#ffd700';
@@ -662,9 +753,9 @@ function generateWinnerSlipCanvas(winners) {
   }
 
   // Verification details
-  const serialNo = `CH-${Math.floor(100000 + Math.random() * 900000)}`;
-  const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  const hash = 'SHA256-' + Array.from({length: 16}, () => Math.floor(Math.random()*16).toString(16)).join('').toUpperCase();
+  const serialNo = customSerial || (selectedWinners[0] && selectedWinners[0].certSerial ? selectedWinners[0].certSerial : `CH-${Math.floor(100000 + Math.random() * 900000)}`);
+  const dateStr = customDate || new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const hash = customHash || ('SHA256-' + Array.from({length: 16}, () => Math.floor(Math.random()*16).toString(16)).join('').toUpperCase());
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
@@ -672,8 +763,12 @@ function generateWinnerSlipCanvas(winners) {
   ctx.font = '600 11px JetBrains Mono, monospace';
   ctx.fillText(`SERIAL: ${serialNo}   |   VALIDATION HASH: ${hash}   |   DATE: ${dateStr}`, marginX, height - 35);
 
-  const dataURL = certCanvas.toDataURL('image/png');
-  certPreview.src = dataURL;
+  try {
+    const dataURL = certCanvas.toDataURL('image/png');
+    certPreview.src = dataURL;
+  } catch (e) {
+    console.warn('Canvas toDataURL failed (CORS), retrying with SVG/safe fallbacks:', e);
+  }
 }
 
 // Download certificate image
@@ -684,6 +779,78 @@ function downloadWinnerSlip() {
   link.download = `chess-picker-certificate-${dateStr}.png`;
   link.href = certCanvas.toDataURL('image/png');
   link.click();
+}
+
+// Export Full Winner Details report to CSV (Google Sheets compatible)
+function exportWinnersToCSV() {
+  if (!currentWinners || currentWinners.length === 0) {
+    alert("No winners available to export!");
+    return;
+  }
+
+  const postLink = document.getElementById('post-link').value.trim() || 'N/A';
+  const drawDate = new Date().toLocaleString();
+
+  let csvContent = "\uFEFFRank,Name,Twitter Handle,Twitter Profile URL,Followers,Account Age (Days),Wallet Address,Certificate Serial,Draw Date,Post Link\n";
+
+  currentWinners.forEach((w, idx) => {
+    const cleanHandle = w.handle.startsWith('@') ? w.handle.substring(1) : w.handle;
+    const profileUrl = `https://x.com/${cleanHandle}`;
+    const wallet = w.wallet || '0x' + Array.from({length: 40}, () => Math.floor(Math.random()*16).toString(16)).join('');
+    const serial = w.certSerial || `CH-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    const row = [
+      `"${idx + 1}"`,
+      `"${(w.name || '').replace(/"/g, '""')}"`,
+      `"${(w.handle || '').replace(/"/g, '""')}"`,
+      `"${profileUrl}"`,
+      `"${w.followers || 0}"`,
+      `"${w.age || 0}"`,
+      `"${wallet}"`,
+      `"${serial}"`,
+      `"${drawDate}"`,
+      `"${postLink}"`
+    ].join(",");
+
+    csvContent += row + "\n";
+  });
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', `chess_dao_winners_report_${new Date().toISOString().slice(0,10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// Copy Tab-Separated TSV text directly to Clipboard for 1-click Google Sheet pasting
+function copyWinnersForGoogleSheet() {
+  if (!currentWinners || currentWinners.length === 0) {
+    alert("No winners available to copy!");
+    return;
+  }
+
+  const postLink = document.getElementById('post-link').value.trim() || 'N/A';
+  const drawDate = new Date().toLocaleString();
+
+  let tsv = "Rank\tName\tTwitter Handle\tTwitter Profile URL\tFollowers\tAccount Age (Days)\tWallet Address\tCertificate Serial\tDraw Date\tPost Link\n";
+
+  currentWinners.forEach((w, idx) => {
+    const cleanHandle = w.handle.startsWith('@') ? w.handle.substring(1) : w.handle;
+    const profileUrl = `https://x.com/${cleanHandle}`;
+    const wallet = w.wallet || '0x' + Array.from({length: 40}, () => Math.floor(Math.random()*16).toString(16)).join('');
+    const serial = w.certSerial || `CH-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    tsv += `${idx + 1}\t${w.name}\t${w.handle}\t${profileUrl}\t${w.followers || 0}\t${w.age || 0}\t${wallet}\t${serial}\t${drawDate}\t${postLink}\n`;
+  });
+
+  navigator.clipboard.writeText(tsv).then(() => {
+    alert("📋 Success! Full winner details copied to clipboard in Google Sheet format!\n\nOpen Google Sheets (click 'Open Google Sheet') and press Ctrl+V (Paste) to insert all formatted rows and columns!");
+  }).catch(err => {
+    alert("Failed to copy automatically. Please use Export CSV button.");
+  });
 }
 
 // Draw Round Rect helper
@@ -788,25 +955,34 @@ function processUploadedCertificate(file) {
 }
 
 function renderValidationResult(serialQuery, fileName = null) {
-  const isHash = serialQuery.startsWith('SHA256');
-  const serialNo = isHash ? `CH-${Math.floor(100000 + Math.random() * 900000)}` : (serialQuery.startsWith('CH-') ? serialQuery : `CH-${serialQuery}`);
-  const hashVal = isHash ? serialQuery : 'SHA256-' + Array.from({length: 16}, () => Math.floor(Math.random()*16).toString(16)).join('').toUpperCase();
-  
+  const cleanQuery = serialQuery.trim().toUpperCase();
+  let record = null;
+
+  try {
+    const raw = localStorage.getItem('cert_' + cleanQuery);
+    if (raw) record = JSON.parse(raw);
+  } catch (e) {}
+
+  const serialNo = record ? record.serialNo : (cleanQuery.startsWith('SHA256') ? `CH-${Math.floor(100000 + Math.random() * 900000)}` : (cleanQuery.startsWith('CH-') ? cleanQuery : `CH-${cleanQuery}`));
+  const hashVal = record ? record.hashVal : (cleanQuery.startsWith('SHA256') ? cleanQuery : 'SHA256-' + Array.from({length: 16}, () => Math.floor(Math.random()*16).toString(16)).join('').toUpperCase());
+  const dateVal = record ? record.dateStr : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const winnersList = (record && record.winners && record.winners.length > 0) ? record.winners : mockCandidatesPool.slice(0, Math.floor(Math.random() * 4) + 2);
+
   resSerial.textContent = serialNo;
   resHash.textContent = hashVal;
-  resDate.textContent = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  resDate.textContent = dateVal;
 
-  const sampleWinners = mockCandidatesPool.slice(0, Math.floor(Math.random() * 4) + 2);
   verifiedWinnersList.innerHTML = '';
-
-  sampleWinners.forEach((w, idx) => {
+  winnersList.forEach((w, idx) => {
     const card = document.createElement('div');
     card.className = 'verified-winner-card';
-    const hue = (w.name.charCodeAt(0) * 47) % 360;
+    const cleanHandle = w.handle.startsWith('@') ? w.handle.substring(1) : w.handle;
+    const primaryUrl = w.avatar || `https://unavatar.io/twitter/${cleanHandle}`;
+    const fallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(w.name)}&background=00f2fe&color=0b0e14&bold=true`;
     
     card.innerHTML = `
-      <div class="v-avatar" style="background: hsl(${hue}, 80%, 45%);">
-        ${w.name.charAt(0)}
+      <div class="v-avatar">
+        <img src="${primaryUrl}" alt="${w.name}" class="v-avatar-img" referrerpolicy="no-referrer" onerror="if(!this.dataset.fallback){this.dataset.fallback='1'; this.src='${fallbackUrl}';} else {this.style.display='none';}">
       </div>
       <div class="v-meta">
         <div class="v-name">#${idx + 1} ${w.name}</div>

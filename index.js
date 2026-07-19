@@ -993,17 +993,31 @@ function drawServerRoundRect(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
-// Fetch user profile picture avatar over HTTP safely
-async function downloadAvatarBuffer(url) {
-  if (!url) return null;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const arrayBuffer = await res.arrayBuffer();
-    return Buffer.from(arrayBuffer);
-  } catch (e) {
-    return null;
+// Fetch user profile picture avatar over HTTP safely with fallback
+async function downloadAvatarBuffer(url, fallbackName = 'User') {
+  if (url) {
+    try {
+      const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (res.ok) {
+        const arrayBuffer = await res.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+      }
+    } catch (e) {
+      console.warn('Primary avatar fetch failed:', e.message);
+    }
   }
+  // Fallback to high-quality UI-Avatars buffer
+  try {
+    const fallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(fallbackName)}&background=00f2fe&color=0b0e14&bold=true&size=128`;
+    const res = await fetch(fallbackUrl);
+    if (res.ok) {
+      const arrayBuffer = await res.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    }
+  } catch (e) {
+    console.warn('Fallback avatar fetch failed:', e.message);
+  }
+  return null;
 }
 
 // Helper to extract EVM, Solana, Sui/Aptos, TRON, TON, Bitcoin or Cosmos wallet addresses from reply text
@@ -1217,16 +1231,14 @@ async function createWinnerSlipBuffer(winners) {
 
   // 6. Parallel download avatar images
   const avatarImages = await Promise.all(selectedWinners.map(async (winner) => {
-    if (winner.avatar) {
-      const avatarBuf = await downloadAvatarBuffer(winner.avatar);
-      if (avatarBuf) {
-        try {
-          const img = new Image();
-          img.src = avatarBuf;
-          return img;
-        } catch (err) {
-          console.error('Failed to parse avatar image:', err.message);
-        }
+    const avatarBuf = await downloadAvatarBuffer(winner.avatar, winner.name || winner.handle);
+    if (avatarBuf) {
+      try {
+        const img = new Image();
+        img.src = avatarBuf;
+        return img;
+      } catch (err) {
+        console.error('Failed to parse avatar image:', err.message);
       }
     }
     return null;

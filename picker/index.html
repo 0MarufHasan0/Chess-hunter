@@ -158,9 +158,51 @@
             </div>
           </div>
 
+          <!-- Google Sheet Full Details Export Box -->
+          <div class="sheet-export-box">
+            <div class="sheet-export-header">
+              <div class="sheet-title">
+                <span class="sheet-icon">📊</span>
+                <div>
+                  <h4 class="sheet-heading">Google Sheet Winners Report</h4>
+                  <p class="sheet-sub">Full details formatted for Google Sheets, Excel & CSV</p>
+                </div>
+              </div>
+              <a href="https://sheet.new" target="_blank" rel="noopener noreferrer" class="btn-sheet-link">
+                🟢 Open Google Sheet
+              </a>
+            </div>
+
+            <!-- Preview Data Table for Google Sheet -->
+            <div class="sheet-table-wrapper">
+              <table id="winners-sheet-table" class="sheet-table">
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Name</th>
+                    <th>Twitter Handle</th>
+                    <th>Followers</th>
+                    <th>Age</th>
+                    <th>Wallet Address</th>
+                    <th>Cert Serial</th>
+                  </tr>
+                </thead>
+                <tbody id="winners-sheet-tbody">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div class="action-buttons">
             <button id="btn-download" class="btn btn-secondary">
               <span>💾 Download Slip (PNG)</span>
+            </button>
+            <button id="btn-export-csv" class="btn btn-green">
+              <span>📊 Export Google Sheet (CSV)</span>
+            </button>
+            <button id="btn-copy-sheet" class="btn btn-purple">
+              <span>📋 Copy for Google Sheet</span>
             </button>
             <button id="btn-reset" class="btn btn-outline">
               <span>🔄 Draw Again</span>
