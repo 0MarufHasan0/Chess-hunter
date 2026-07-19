@@ -99,9 +99,29 @@
         </div>
 
         <div class="form-group">
+          <label>Draw History & Filters</label>
+          <div class="checkbox-row">
+            <label class="custom-checkbox">
+              <input type="checkbox" id="allow-repeats" checked>
+              <span class="checkmark"></span>
+              Allow Repeat Winners
+            </label>
+            <label class="custom-checkbox">
+              <input type="checkbox" id="bypass-filters" checked>
+              <span class="checkmark"></span>
+              Bypass Filters for Custom Handles
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
           <div class="label-with-action">
             <label for="custom-replies">Custom / Pasted Candidate Handles (Optional)</label>
-            <button id="btn-load-sample" class="btn-text-action" type="button">✨ Load Sample 20 Users</button>
+            <div style="display: flex; gap: 8px;">
+              <button id="btn-load-sample" class="btn-text-action" type="button">✨ Load Sample</button>
+              <span style="color: rgba(255, 255, 255, 0.2)">|</span>
+              <button id="btn-clear-history" class="btn-text-action alert-text" type="button">🗑️ Reset History</button>
+            </div>
           </div>
           <textarea id="custom-replies" placeholder="Paste custom handles (one per line)... E.g.
 @MagnusCarlsen

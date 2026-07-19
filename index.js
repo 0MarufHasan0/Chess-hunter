@@ -2464,6 +2464,48 @@ const webServer = http.createServer(async (req, res) => {
     return;
   }
 
+  // API Endpoint: Proxy external images to bypass CORS taint on canvas
+  if (parsedUrl.pathname === '/api/proxy-avatar') {
+    const targetUrl = parsedUrl.searchParams.get('url');
+    if (!targetUrl) {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      res.end('Missing url parameter');
+      return;
+    }
+    try {
+      const getImg = (urlToFetch, depth = 0) => {
+        if (depth > 5) {
+          res.writeHead(500);
+          res.end('Too many redirects');
+          return;
+        }
+        const parsedTarget = new URL(urlToFetch);
+        const client = parsedTarget.protocol === 'https:' ? require('https') : require('http');
+        
+        client.get(urlToFetch, (imageRes) => {
+          if (imageRes.statusCode >= 300 && imageRes.statusCode < 400 && imageRes.headers.location) {
+            getImg(imageRes.headers.location, depth + 1);
+            return;
+          }
+          res.writeHead(200, {
+            'Content-Type': imageRes.headers['content-type'] || 'image/png',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=86400'
+          });
+          imageRes.pipe(res);
+        }).on('error', (err) => {
+          res.writeHead(500);
+          res.end(err.message);
+        });
+      };
+      getImg(targetUrl);
+    } catch (err) {
+      res.writeHead(500);
+      res.end(err.message);
+    }
+    return;
+  }
+
   // API Endpoint: Fetch real Twitter post replies using authenticated X scraper session
   if (parsedUrl.pathname === '/api/fetch-tweet-replies') {
     const postUrl = parsedUrl.searchParams.get('url');

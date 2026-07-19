@@ -82,6 +82,19 @@ const resHash = document.getElementById('res-hash');
 const resDate = document.getElementById('res-date');
 const verifiedWinnersList = document.getElementById('verified-winners-list');
 
+const allowRepeatsCheckbox = document.getElementById('allow-repeats');
+const bypassFiltersCheckbox = document.getElementById('bypass-filters');
+const btnClearHistory = document.getElementById('btn-clear-history');
+
+// Helper to get CORS-safe proxy URL for images drawn on canvas
+function getSafeAvatarUrl(originalUrl) {
+  if (!originalUrl) return '';
+  if (originalUrl.startsWith('data:') || originalUrl.startsWith('blob:') || originalUrl.startsWith('/') || originalUrl.startsWith(window.location.origin)) {
+    return originalUrl;
+  }
+  return `${window.location.origin}/api/proxy-avatar?url=${encodeURIComponent(originalUrl)}`;
+}
+
 // Preload Logo image for canvas rendering
 let chessLogoImage = new Image();
 chessLogoImage.src = 'logo.jpg';
@@ -237,6 +250,20 @@ if (btnLoadSample) {
   });
 }
 
+if (btnClearHistory) {
+  btnClearHistory.addEventListener('click', () => {
+    let count = 0;
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('drawn_winners_')) {
+        localStorage.removeItem(key);
+        count++;
+      }
+    }
+    alert(`🗑️ Reset draw history: Cleared ${count} post draw logs! You can now redraw any candidate.`);
+  });
+}
+
 if (btnDraw) btnDraw.addEventListener('click', startWinnerDraw);
 if (btnReset) btnReset.addEventListener('click', resetDrawState);
 if (btnDownload) btnDownload.addEventListener('click', downloadWinnerSlip);
@@ -257,20 +284,25 @@ function resetDrawState() {
 async function startWinnerDraw() {
   if (isDrawing) return;
   
-  const postLink = document.getElementById('post-link').value.trim();
+  let postLink = document.getElementById('post-link').value.trim();
   const minFollowers = parseInt(followersSlider.value);
   const minAge = parseInt(ageSlider.value);
   const reqLike = document.getElementById('req-like').checked;
   const reqRt = document.getElementById('req-rt').checked;
   const requireFollowVal = document.getElementById('require-follow').value.trim();
   
-  if (!postLink) {
-    alert("Please enter a valid Twitter/X Post Link to verify replies.");
+  const pastedText = customRepliesTextarea.value.trim();
+  
+  if (!postLink && !pastedText) {
+    alert("Please enter a valid Twitter/X Post Link or paste custom candidate handles.");
     return;
   }
 
+  if (!postLink) {
+    postLink = "https://x.com/ChessDAO/status/custom_draw";
+  }
+
   let candidates = [];
-  const pastedText = customRepliesTextarea.value.trim();
   
   if (pastedText) {
     candidates = pastedText.split('\n')
@@ -319,8 +351,18 @@ async function startWinnerDraw() {
 
   const filtered = candidates.filter(user => {
     const handleLower = user.handle.toLowerCase();
-    // Exclude previously drawn winners if allowRepeat is false (default)
-    if (prevWinnersSet.has(handleLower)) return false;
+    
+    // Respect "Allow Repeat Winners" setting
+    const allowRepeats = allowRepeatsCheckbox ? allowRepeatsCheckbox.checked : false;
+    if (!allowRepeats && prevWinnersSet.has(handleLower)) return false;
+    
+    // Respect "Bypass Filters for Custom Handles" setting
+    const isCustom = pastedText.length > 0;
+    const bypassFilters = bypassFiltersCheckbox ? bypassFiltersCheckbox.checked : true;
+    if (isCustom && bypassFilters) {
+      return true;
+    }
+    
     if (user.followers < minFollowers) return false;
     if (user.age < minAge) return false;
     if (reqLike && !user.likes) return false;
@@ -431,6 +473,10 @@ async function showWinners(winners) {
     successBadge.textContent = currentWinners.length === 1 ? '🎉 WINNER SELECTED 🎉' : `🎉 ${currentWinners.length} WINNERS SELECTED 🎉`;
   }
 
+  const serialNo = `CH-${Math.floor(100000 + Math.random() * 900000)}`;
+  const hashVal = 'SHA256-' + Array.from({length: 16}, () => Math.floor(Math.random()*16).toString(16)).join('').toUpperCase();
+  const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
   const gridContainer = document.getElementById('winners-grid-container');
   if (gridContainer) {
     gridContainer.innerHTML = '';
@@ -445,8 +491,12 @@ async function showWinners(winners) {
       const fallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(winner.name)}&background=00f2fe&color=0b0e14&bold=true`;
 
       const avatarHtml = `
-        <img src="${primaryUrl}" alt="${winner.name}" class="winner-avatar-img" referrerpolicy="no-referrer" onerror="if(!this.dataset.fallback){this.dataset.fallback='1'; this.src='${fallbackUrl}';} else {this.style.display='none'; this.nextElementSibling.style.display='flex';}">
+        <img src="${getSafeAvatarUrl(primaryUrl)}" alt="${winner.name}" class="winner-avatar-img" referrerpolicy="no-referrer" onerror="if(!this.dataset.fallback){this.dataset.fallback='1'; this.src='${getSafeAvatarUrl(fallbackUrl)}';} else {this.style.display='none'; this.nextElementSibling.style.display='flex';}">
         <div class="winner-avatar-badge" style="background: hsl(${hue}, 80%, 45%); display: none;">${initial}</div>
+        <div class="avatar-upload-overlay">
+          <span class="avatar-upload-text">📷 Upload</span>
+        </div>
+        <input type="file" class="card-avatar-input" accept="image/*" style="display:none;">
       `;
 
       const followersFormatted = winner.followers > 0 ? winner.followers.toLocaleString() : '0';
@@ -468,12 +518,43 @@ async function showWinners(winners) {
         </div>
       `;
       gridContainer.appendChild(card);
-    });
-  }
 
-  const serialNo = `CH-${Math.floor(100000 + Math.random() * 900000)}`;
-  const hashVal = 'SHA256-' + Array.from({length: 16}, () => Math.floor(Math.random()*16).toString(16)).join('').toUpperCase();
-  const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      // Connect custom avatar upload functionality
+      const avatarWrapper = card.querySelector('.winner-avatar-wrapper');
+      const fileInput = card.querySelector('.card-avatar-input');
+
+      if (avatarWrapper && fileInput) {
+        avatarWrapper.addEventListener('click', () => {
+          fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (e) => {
+          const file = e.target.files[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+              const base64Data = event.target.result;
+              winner.avatar = base64Data;
+
+              // Update profile card image instantly
+              const imgEl = avatarWrapper.querySelector('.winner-avatar-img');
+              const badgeEl = avatarWrapper.querySelector('.winner-avatar-badge');
+              if (imgEl) {
+                imgEl.src = base64Data;
+                imgEl.style.display = 'block';
+              }
+              if (badgeEl) {
+                badgeEl.style.display = 'none';
+              }
+
+              // Re-render canvas certificate slip with the new uploaded image
+              await generateWinnerSlipCanvas(currentWinners, serialNo, hashVal, dateStr);
+            };
+            reader.readAsDataURL(file);
+          }
+        });
+      }
+  }
 
   // Store serial on winners
   currentWinners.forEach(w => { w.certSerial = serialNo; });
@@ -562,9 +643,9 @@ async function generateWinnerSlipCanvas(winners, customSerial = null, customHash
         fallbackImg.crossOrigin = 'anonymous';
         fallbackImg.onload = () => resolve(fallbackImg);
         fallbackImg.onerror = () => resolve(null);
-        fallbackImg.src = fallbackUrl;
+        fallbackImg.src = getSafeAvatarUrl(fallbackUrl);
       };
-      img.src = primaryUrl;
+      img.src = getSafeAvatarUrl(primaryUrl);
     });
   }));
 
