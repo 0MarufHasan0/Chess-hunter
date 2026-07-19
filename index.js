@@ -995,8 +995,8 @@ function drawServerRoundRect(ctx, x, y, width, height, radius) {
 
 // Global helper to fetch real tweet repliers & candidate profile data using authenticated X session
 async function fetchRealTweetCandidates(postUrl) {
-  const urlMatch = postUrl.match(/(?:twitter|x)\.com\/([a-zA-Z0-9_]+)\/status\/([0-9]+)/);
-  if (!urlMatch) throw new Error('Invalid Twitter/X status URL format.');
+  const urlMatch = postUrl.match(/(?:twitter|x)\.com\/(?:([a-zA-Z0-9_]+)\/)?(?:i\/)?status\/([0-9]+)/i);
+  if (!urlMatch || !urlMatch[2]) throw new Error('Invalid Twitter/X status URL format.');
 
   const tweetId = urlMatch[2];
   const activeScraper = await getTwitterScraper();
@@ -2251,12 +2251,12 @@ client.on('interactionCreate', async (interaction) => {
         const mustRt = interaction.options.getBoolean('must_rt') ?? true;
         const allowRepeat = interaction.options.getBoolean('allow_repeat') || false;
 
-        const urlMatch = postUrl.match(/(?:twitter|x)\.com\/([a-zA-Z0-9_]+)\/status\/([0-9]+)/);
-        if (!urlMatch) {
-          return interaction.reply({ content: '❌ Invalid Twitter/X status URL. Format must be `https://x.com/username/status/1234567890`', ephemeral: true });
+        const urlMatch = postUrl.match(/(?:twitter|x)\.com\/(?:([a-zA-Z0-9_]+)\/)?(?:i\/)?status\/([0-9]+)/i);
+        if (!urlMatch || !urlMatch[2]) {
+          return interaction.reply({ content: '❌ Invalid Twitter/X status URL. Format e.g. `https://x.com/username/status/123456` or `https://x.com/i/status/123456`', ephemeral: true });
         }
 
-        const postAuthor = urlMatch[1];
+        const postAuthor = (urlMatch[1] && urlMatch[1] !== 'i') ? urlMatch[1] : 'twitter_user';
         const tweetId = urlMatch[2];
 
         // Defer response as we need to query Twitter API

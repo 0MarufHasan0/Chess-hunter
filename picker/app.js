@@ -441,6 +441,7 @@ async function showWinners(winners) {
         <div class="winner-card-meta">
           <h4 class="winner-card-name" title="${winner.name}">${winner.name}</h4>
           <a href="https://x.com/${cleanHandle}" target="_blank" rel="noopener noreferrer" class="winner-card-handle">${winner.handle}</a>
+          ${winner.replyUrl ? `<a href="${winner.replyUrl}" target="_blank" rel="noopener noreferrer" style="font-size:0.7rem; color:#00f2fe; text-decoration:none; margin-top:2px;">💬 View Reply on X</a>` : ''}
           <div class="winner-card-stats">
             <span class="w-stat">👥 ${followersFormatted}</span>
             <span class="w-stat">📅 ${ageFormatted}</span>
@@ -480,12 +481,14 @@ async function showWinners(winners) {
       const cleanHandle = winner.handle.startsWith('@') ? winner.handle.substring(1) : winner.handle;
       const serial = winner.certSerial;
       const wallet = winner.wallet || `0x${Array.from({length: 8}, () => Math.floor(Math.random()*16).toString(16)).join('')}...${Array.from({length: 4}, () => Math.floor(Math.random()*16).toString(16)).join('')}`;
+      const replyLink = winner.replyUrl || `https://x.com/${cleanHandle}`;
 
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>#${idx + 1}</td>
         <td><strong>${winner.name}</strong></td>
         <td><a href="https://x.com/${cleanHandle}" target="_blank" style="color:#00e676; text-decoration:none;">${winner.handle}</a></td>
+        <td><a href="${replyLink}" target="_blank" style="color:#00f2fe; text-decoration:none;">💬 View Reply</a></td>
         <td>${winner.followers ? winner.followers.toLocaleString() : '0'}</td>
         <td>${winner.age ? winner.age + 'd' : '0d'}</td>
         <td><code>${wallet}</code></td>
@@ -807,11 +810,12 @@ function exportWinnersToCSV() {
   const postLink = document.getElementById('post-link').value.trim() || 'N/A';
   const drawDate = new Date().toLocaleString();
 
-  let csvContent = "\uFEFFRank,Name,Twitter Handle,Twitter Profile URL,Followers,Account Age (Days),Wallet Address,Certificate Serial,Draw Date,Post Link\n";
+  let csvContent = "\uFEFFRank,Name,Twitter Handle,Twitter Profile URL,Winner Reply Link,Followers,Account Age (Days),Wallet Address,Certificate Serial,Draw Date,Post Link\n";
 
   currentWinners.forEach((w, idx) => {
     const cleanHandle = w.handle.startsWith('@') ? w.handle.substring(1) : w.handle;
     const profileUrl = `https://x.com/${cleanHandle}`;
+    const replyUrl = w.replyUrl || profileUrl;
     const wallet = w.wallet || '0x' + Array.from({length: 40}, () => Math.floor(Math.random()*16).toString(16)).join('');
     const serial = w.certSerial || `CH-${Math.floor(100000 + Math.random() * 900000)}`;
 
@@ -820,6 +824,7 @@ function exportWinnersToCSV() {
       `"${(w.name || '').replace(/"/g, '""')}"`,
       `"${(w.handle || '').replace(/"/g, '""')}"`,
       `"${profileUrl}"`,
+      `"${replyUrl}"`,
       `"${w.followers || 0}"`,
       `"${w.age || 0}"`,
       `"${wallet}"`,
@@ -851,15 +856,16 @@ function copyWinnersForGoogleSheet() {
   const postLink = document.getElementById('post-link').value.trim() || 'N/A';
   const drawDate = new Date().toLocaleString();
 
-  let tsv = "Rank\tName\tTwitter Handle\tTwitter Profile URL\tFollowers\tAccount Age (Days)\tWallet Address\tCertificate Serial\tDraw Date\tPost Link\n";
+  let tsv = "Rank\tName\tTwitter Handle\tTwitter Profile URL\tWinner Reply Link\tFollowers\tAccount Age (Days)\tWallet Address\tCertificate Serial\tDraw Date\tPost Link\n";
 
   currentWinners.forEach((w, idx) => {
     const cleanHandle = w.handle.startsWith('@') ? w.handle.substring(1) : w.handle;
     const profileUrl = `https://x.com/${cleanHandle}`;
+    const replyUrl = w.replyUrl || profileUrl;
     const wallet = w.wallet || '0x' + Array.from({length: 40}, () => Math.floor(Math.random()*16).toString(16)).join('');
     const serial = w.certSerial || `CH-${Math.floor(100000 + Math.random() * 900000)}`;
 
-    tsv += `${idx + 1}\t${w.name}\t${w.handle}\t${profileUrl}\t${w.followers || 0}\t${w.age || 0}\t${wallet}\t${serial}\t${drawDate}\t${postLink}\n`;
+    tsv += `${idx + 1}\t${w.name}\t${w.handle}\t${profileUrl}\t${replyUrl}\t${w.followers || 0}\t${w.age || 0}\t${wallet}\t${serial}\t${drawDate}\t${postLink}\n`;
   });
 
   navigator.clipboard.writeText(tsv).then(() => {
